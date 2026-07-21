@@ -173,7 +173,7 @@ function filterTable(){
     <thead><tr>
       <th>Employee</th><th>Department</th><th>Leave type</th>
       <th>Start</th><th>End</th><th>Days</th>
-      <th>Status</th><th>Manager decision</th><th>Applied</th>
+      <th>Status</th><th>Manager decision</th><th>Document</th><th>Applied</th>
     </tr></thead>
     <tbody>${filtered.map(a=>`<tr>
       <td style="font-weight:500;">${escH(a.name)}</td>
@@ -184,6 +184,7 @@ function filterTable(){
       <td>${a.workingDays}</td>
       <td><span class="badge ${(a.status||'pending').toLowerCase()}">${a.status||'Pending'}</span></td>
       <td style="color:var(--slate-soft); font-size:12px;">${escH(a.managerNote||'-')}</td>
+      <td>${a.attachmentUrl?`<a href="${escH(a.attachmentUrl)}" target="_blank" rel="noopener" style="color:var(--brand); font-weight:600; font-size:12px;">View</a>`:'<span style="color:var(--slate-soft); font-size:12px;">-</span>'}</td>
       <td style="color:var(--slate-soft); font-size:12px;">${formatDate(a.timestamp)}</td>
     </tr>`).join('')}</tbody>
   </table>`;

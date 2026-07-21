@@ -195,6 +195,12 @@ tr:nth-child(even) td{background:#FAFCFA;}
         <label for="contactPhone">Contact number during leave</label>
         <input type="tel" id="contactPhone" placeholder="e.g. 071 234 5678">
       </div>
+      <div class="field">
+        <label for="attachmentFile">Supporting document <span id="attachmentRequiredTag" style="font-weight:400; color:var(--slate-soft); font-size:11.5px;">optional</span></label>
+        <input type="file" id="attachmentFile" accept=".pdf,.jpg,.jpeg,.png" onchange="onAttachmentChange()">
+        <div class="hint">e.g. a doctor's note for sick leave. Accepted: PDF, JPG, PNG (max 5MB).</div>
+        <div class="hint" id="attachmentError" style="color:var(--red); display:none;"></div>
+      </div>
       <div class="msg" id="applyMsg"></div>
     </div>
     <div class="modal-footer">
@@ -206,6 +212,12 @@ tr:nth-child(even) td{background:#FAFCFA;}
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzVp9rd9xyR0JJwsbUqY5kqcQRcTItQThG88PDx9wIGjlPtAqX_KB3t2_hsdAIOZ1LgUQ/exec";
+
+let attachmentRequired = false;
+let attachmentBase64 = "";
+let attachmentName = "";
+let attachmentMimeType = "";
+const MAX_ATTACHMENT_MB = 5;
 
 /* ── Session check ── */
 const userStr = sessionStorage.getItem('seriti_user');
@@ -236,6 +248,7 @@ function onLeaveTypeChange(){
   } else {
     alert.classList.remove('show');
   }
+  updateAttachmentRequirement();
 }
 
 /* ── Working days calculator ── */
@@ -248,6 +261,73 @@ function calcDays(){
   let days=0, cur=new Date(start);
   while(cur<=end){ if(cur.getDay()!==0&&cur.getDay()!==6) days++; cur.setDate(cur.getDate()+1); }
   document.getElementById('workingDays').value=days;
+  updateAttachmentRequirement();
+}
+
+/* ── Determine whether a supporting document is required ──
+   Per Seriti policy: a doctor's note is required for sick leave that's
+   more than 2 consecutive days, or starts on a Monday or Friday.
+   (Public-holiday-adjacent days aren't checked automatically -- no
+   holiday calendar is loaded -- so that part of the policy still needs
+   a manual check by the manager.) */
+function updateAttachmentRequirement(){
+  const type = document.getElementById('leaveType').value;
+  const start = document.getElementById('startDate').value;
+  const days  = Number(document.getElementById('workingDays').value) || 0;
+  const tag   = document.getElementById('attachmentRequiredTag');
+
+  let required = false;
+  if(type === 'Sick'){
+    if(days > 2) required = true;
+    if(start){
+      const dow = new Date(start).getDay(); // 0=Sun ... 1=Mon ... 5=Fri ... 6=Sat
+      if(dow === 1 || dow === 5) required = true;
+    }
+  }
+
+  attachmentRequired = required;
+  if(required){
+    tag.textContent = 'required for this sick leave request';
+    tag.style.color = 'var(--red)';
+  } else {
+    tag.textContent = 'optional';
+    tag.style.color = 'var(--slate-soft)';
+  }
+}
+
+function onAttachmentChange(){
+  const input = document.getElementById('attachmentFile');
+  const errEl = document.getElementById('attachmentError');
+  errEl.style.display = 'none';
+
+  const file = input.files[0];
+  if(!file){
+    attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
+    return;
+  }
+
+  if(file.size > MAX_ATTACHMENT_MB * 1024 * 1024){
+    errEl.textContent = `File is too large. Please keep it under ${MAX_ATTACHMENT_MB}MB.`;
+    errEl.style.display = 'block';
+    input.value = '';
+    attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e){
+    // e.target.result is a data URL like "data:application/pdf;base64,AAAA..."
+    const commaIdx = e.target.result.indexOf(',');
+    attachmentBase64 = e.target.result.slice(commaIdx + 1);
+    attachmentName = file.name;
+    attachmentMimeType = file.type || 'application/octet-stream';
+  };
+  reader.onerror = function(){
+    errEl.textContent = 'Could not read that file. Please try again.';
+    errEl.style.display = 'block';
+    attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
+  };
+  reader.readAsDataURL(file);
 }
 
 /* ── Load data ── */
@@ -316,8 +396,12 @@ function closeModal(){
   document.getElementById('reason').value='';
   document.getElementById('cover').value='';
   document.getElementById('contactPhone').value='';
+  document.getElementById('attachmentFile').value='';
+  document.getElementById('attachmentError').style.display='none';
   document.getElementById('policyAlert').classList.remove('show');
   document.getElementById('applyMsg').className='msg';
+  attachmentRequired = false;
+  attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
 }
 
 function showMsg(type,text){
@@ -339,6 +423,7 @@ async function submitLeave(){
   if(!start) return showMsg('err','Please select a start date.');
   if(!end)   return showMsg('err','Please select an end date.');
   if(!days||days<=0) return showMsg('err','Please enter the number of working days.');
+  if(attachmentRequired && !attachmentBase64) return showMsg('err','A supporting document is required for this sick leave request.');
 
   const btn=document.getElementById('submitLeaveBtn');
   btn.disabled=true; btn.textContent='Submitting…';
@@ -350,7 +435,8 @@ async function submitLeave(){
     leaveType:type, startDate:start, endDate:end, workingDays:days,
     reason, coverPerson:cover, contactPhone:phone,
     timestamp:new Date().toISOString(), status:'Pending',
-    appId:'SER-'+Date.now().toString(36).toUpperCase()
+    appId:'SER-'+Date.now().toString(36).toUpperCase(),
+    attachmentBase64, attachmentName, attachmentMimeType
   };
 
   try{
