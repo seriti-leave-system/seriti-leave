@@ -125,7 +125,21 @@ document.getElementById('navName').textContent = user.name;
 let allApps=[], allStaff=[];
 
 function escH(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
-function formatDate(d){ try{ return new Date(d).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return d||'-'; } }
+function formatDate(d){
+  try{
+    let date;
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      // Plain date-only string (e.g. leave start/end dates) -- parse from
+      // local year/month/day parts to avoid a UTC-midnight interpretation
+      // shifting the day backward on computers set to a timezone behind UTC.
+      const [y, m, day] = d.split('-').map(Number);
+      date = new Date(y, m - 1, day);
+    } else {
+      date = new Date(d);
+    }
+    return date.toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
+  }catch(e){ return d||'-'; }
+}
 
 async function loadAll(){
   if(SCRIPT_URL.includes('PASTE_YOUR')){

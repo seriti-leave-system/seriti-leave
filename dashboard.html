@@ -180,8 +180,8 @@ tr:nth-child(even) td{background:#FAFCFA;}
       </div>
       <div class="field">
         <label for="workingDays">Working days</label>
-        <input type="number" id="workingDays" min="0" placeholder="Auto-calculated">
-        <div class="hint">Calculated automatically. You can adjust if needed.</div>
+        <input type="number" id="workingDays" min="0" placeholder="Auto-calculated" readonly style="background:#F0F0F0; cursor:not-allowed;">
+        <div class="hint">Calculated automatically from your start and end dates.</div>
       </div>
       <div class="field">
         <label for="reason">Reason <span style="font-weight:400; color:var(--slate-soft); font-size:11.5px;">optional</span></label>
@@ -252,11 +252,20 @@ function onLeaveTypeChange(){
 }
 
 /* ── Working days calculator ── */
+function parseLocalDate(dateStr){
+  // Builds the Date directly from the year/month/day parts, rather than
+  // letting the browser parse the "YYYY-MM-DD" string as UTC midnight --
+  // that UTC parsing can silently shift the calendar day by one on
+  // computers set to a timezone behind UTC, causing wrong day counts.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function calcDays(){
   const s = document.getElementById('startDate').value;
   const e = document.getElementById('endDate').value;
   if(!s||!e) return;
-  const start=new Date(s), end=new Date(e);
+  const start=parseLocalDate(s), end=parseLocalDate(e);
   if(end<start) return;
   let days=0, cur=new Date(start);
   while(cur<=end){ if(cur.getDay()!==0&&cur.getDay()!==6) days++; cur.setDate(cur.getDate()+1); }
@@ -280,7 +289,7 @@ function updateAttachmentRequirement(){
   if(type === 'Sick'){
     if(days > 2) required = true;
     if(start){
-      const dow = new Date(start).getDay(); // 0=Sun ... 1=Mon ... 5=Fri ... 6=Sat
+      const dow = parseLocalDate(start).getDay(); // 0=Sun ... 1=Mon ... 5=Fri ... 6=Sat
       if(dow === 1 || dow === 5) required = true;
     }
   }
@@ -382,7 +391,21 @@ function renderApplications(apps){
   </table>`;
 }
 
-function formatDate(d){ try{ return new Date(d).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return d||'-'; } }
+function formatDate(d){
+  try{
+    let date;
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      // Plain date-only string (e.g. leave start/end dates) -- parse from
+      // local year/month/day parts to avoid a UTC-midnight interpretation
+      // shifting the day backward on computers set to a timezone behind UTC.
+      const [y, m, day] = d.split('-').map(Number);
+      date = new Date(y, m - 1, day);
+    } else {
+      date = new Date(d);
+    }
+    return date.toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
+  }catch(e){ return d||'-'; }
+}
 function escH(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
 /* ── Modal ── */
@@ -440,9 +463,15 @@ async function submitLeave(){
   };
 
   try{
-    await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    const res  = await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    const data = await res.json().catch(()=>null);
 
-    /* Verify the application actually saved before telling the user it worked */
+    if(data && data.success === false){
+      showMsg('err', data.message || 'Your application could not be submitted. Please try again.');
+      return;
+    }
+
+    /* Double-check it actually saved, in case the response was ambiguous for any reason */
     const verifyRes  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}`);
     const verifyData = await verifyRes.json();
     const saved = (verifyData.applications||[]).some(a=>a.appId===payload.appId);

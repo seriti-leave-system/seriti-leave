@@ -109,7 +109,21 @@ let allApps = [];
 let currentFilter = 'all';
 
 function escH(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
-function formatDate(d){ try{ return new Date(d).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return d||'-'; } }
+function formatDate(d){
+  try{
+    let date;
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      // Plain date-only string (e.g. leave start/end dates) -- parse from
+      // local year/month/day parts to avoid a UTC-midnight interpretation
+      // shifting the day backward on computers set to a timezone behind UTC.
+      const [y, m, day] = d.split('-').map(Number);
+      date = new Date(y, m - 1, day);
+    } else {
+      date = new Date(d);
+    }
+    return date.toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
+  }catch(e){ return d||'-'; }
+}
 
 async function loadApps(){
   if(SCRIPT_URL.includes('PASTE_YOUR')){
@@ -152,6 +166,7 @@ function renderApps(){
         <span class="badge ${(a.status||'pending').toLowerCase()}">${a.status||'Pending'}</span>
       </div>
       <div class="app-details">
+        <div class="detail"><div class="dlabel">${escH(a.leaveType)} balance</div><span style="font-weight:700; color:${a.applicantBalance ? 'var(--brand)' : 'var(--slate-soft)'};">${a.applicantBalance ? escH(a.applicantBalance) : 'N/A'}</span></div>
         <div class="detail"><div class="dlabel">Start date</div>${formatDate(a.startDate)}</div>
         <div class="detail"><div class="dlabel">End date</div>${formatDate(a.endDate)}</div>
         <div class="detail"><div class="dlabel">Working days</div>${a.workingDays}</div>
