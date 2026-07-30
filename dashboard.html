@@ -189,7 +189,9 @@ tr:nth-child(even) td{background:#FAFCFA;}
       </div>
       <div class="field">
         <label for="cover">Who will cover your responsibilities?</label>
-        <input type="text" id="cover" placeholder="Colleague's name">
+        <select id="cover">
+          <option value="">Select a colleague...</option>
+        </select>
       </div>
       <div class="field">
         <label for="contactPhone">Contact number during leave</label>
@@ -439,7 +441,9 @@ async function submitLeave(){
   const end   = document.getElementById('endDate').value;
   const days  = document.getElementById('workingDays').value;
   const reason= document.getElementById('reason').value.trim();
-  const cover = document.getElementById('cover').value.trim();
+  const coverEmail = document.getElementById('cover').value;
+  const coverStaff = allStaffList.find(s => s.email === coverEmail);
+  const coverName  = coverStaff ? coverStaff.name : '';
   const phone = document.getElementById('contactPhone').value.trim();
 
   if(!type)  return showMsg('err','Please select a leave type.');
@@ -456,7 +460,7 @@ async function submitLeave(){
     email:user.email, name:user.name, department:user.dept,
     managerEmail:user.managerEmail,
     leaveType:type, startDate:start, endDate:end, workingDays:days,
-    reason, coverPerson:cover, contactPhone:phone,
+    reason, coverPerson:coverName, coverPersonEmail:coverEmail, contactPhone:phone,
     timestamp:new Date().toISOString(), status:'Pending',
     appId:'SER-'+Date.now().toString(36).toUpperCase(),
     attachmentBase64, attachmentName, attachmentMimeType
@@ -494,7 +498,25 @@ function signOut(){
   window.location.href='login.html';
 }
 
+let allStaffList = [];
+async function loadAllStaffForCoverDropdown(){
+  const sel = document.getElementById('cover');
+  if(SCRIPT_URL.includes('PASTE_YOUR')) return;
+  try{
+    const res  = await fetch(`${SCRIPT_URL}?action=allStaff`);
+    const data = await res.json();
+    allStaffList = (data.staff || []).filter(s => s.email !== user.email); // exclude yourself
+
+    sel.innerHTML = '<option value="">Select a colleague...</option>' +
+      allStaffList.map(s=>`<option value="${escAttr(s.email)}">${escH(s.name)}</option>`).join('');
+  }catch(e){
+    sel.innerHTML = '<option value="">Could not load staff list</option>';
+  }
+}
+function escAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
 loadDashboard();
+loadAllStaffForCoverDropdown();
 </script>
 </body>
 </html>
