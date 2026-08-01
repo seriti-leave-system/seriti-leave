@@ -178,6 +178,10 @@ tr:nth-child(even) td{background:#FAFCFA;}
           <input type="date" id="endDate" onchange="calcDays()">
         </div>
       </div>
+      <div class="field" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="halfDay" onchange="onHalfDayToggle()" style="width:auto; margin:0;">
+        <label for="halfDay" style="margin:0; font-weight:600; cursor:pointer;">This is a half day (4 hours)</label>
+      </div>
       <div class="field">
         <label for="workingDays">Working days</label>
         <input type="number" id="workingDays" min="0" placeholder="Auto-calculated" readonly style="background:#F0F0F0; cursor:not-allowed;">
@@ -264,7 +268,18 @@ function parseLocalDate(dateStr){
 }
 
 function calcDays(){
+  const halfDayChecked = document.getElementById('halfDay').checked;
   const s = document.getElementById('startDate').value;
+
+  if(halfDayChecked){
+    // Half day always means a single day, worth 0.5 -- keep End date in sync
+    // with Start date rather than counting a weekday range.
+    if(s) document.getElementById('endDate').value = s;
+    document.getElementById('workingDays').value = s ? 0.5 : '';
+    updateAttachmentRequirement();
+    return;
+  }
+
   const e = document.getElementById('endDate').value;
   if(!s||!e) return;
   const start=parseLocalDate(s), end=parseLocalDate(e);
@@ -273,6 +288,22 @@ function calcDays(){
   while(cur<=end){ if(cur.getDay()!==0&&cur.getDay()!==6) days++; cur.setDate(cur.getDate()+1); }
   document.getElementById('workingDays').value=days;
   updateAttachmentRequirement();
+}
+
+function onHalfDayToggle(){
+  const checked = document.getElementById('halfDay').checked;
+  const endDateInput = document.getElementById('endDate');
+
+  if(checked){
+    endDateInput.disabled = true;
+    endDateInput.style.background = '#F0F0F0';
+    endDateInput.style.cursor = 'not-allowed';
+  } else {
+    endDateInput.disabled = false;
+    endDateInput.style.background = '';
+    endDateInput.style.cursor = '';
+  }
+  calcDays();
 }
 
 /* ── Determine whether a supporting document is required ──
@@ -417,6 +448,10 @@ function closeModal(){
   document.getElementById('leaveType').value='';
   document.getElementById('startDate').value='';
   document.getElementById('endDate').value='';
+  document.getElementById('endDate').disabled=false;
+  document.getElementById('endDate').style.background='';
+  document.getElementById('endDate').style.cursor='';
+  document.getElementById('halfDay').checked=false;
   document.getElementById('workingDays').value='';
   document.getElementById('reason').value='';
   document.getElementById('cover').value='';
