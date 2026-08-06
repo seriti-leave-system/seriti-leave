@@ -147,7 +147,7 @@ async function loadAll(){
     return;
   }
   try{
-    const res  = await fetch(`${SCRIPT_URL}?action=hr&email=${encodeURIComponent(user.email)}`);
+    const res  = await fetch(`${SCRIPT_URL}?action=hr&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
     const data = await res.json();
     allApps  = data.applications||[];
     allStaff = data.staff||[];

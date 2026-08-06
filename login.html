@@ -334,8 +334,11 @@ async function handleLogin(){
     const data = await res.json();
 
     if(data.success){
-      /* Store session in sessionStorage (cleared when tab closes) */
-      sessionStorage.setItem('seriti_user', JSON.stringify(data.user));
+      /* Store session in sessionStorage (cleared when tab closes) --
+         the hash is included so dashboard/manager/hr pages can prove
+         who's asking when they request data, not just state who they are. */
+      const userWithHash = Object.assign({}, data.user, { hash });
+      sessionStorage.setItem('seriti_user', JSON.stringify(userWithHash));
       /* Route by role */
       if(data.user.role==='hr')       window.location.href='hr.html';
       else if(data.user.role==='manager') window.location.href='manager.html';

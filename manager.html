@@ -131,7 +131,7 @@ async function loadApps(){
     return;
   }
   try{
-    const res  = await fetch(`${SCRIPT_URL}?action=managerApps&email=${encodeURIComponent(user.email)}`);
+    const res  = await fetch(`${SCRIPT_URL}?action=managerApps&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
     const data = await res.json();
     allApps = data.applications||[];
     renderApps();
@@ -205,7 +205,7 @@ async function decide(i, decision){
     await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
 
     /* Verify the decision actually saved before updating the UI */
-    const verifyRes  = await fetch(`${SCRIPT_URL}?action=managerApps&email=${encodeURIComponent(user.email)}`);
+    const verifyRes  = await fetch(`${SCRIPT_URL}?action=managerApps&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
     const verifyData = await verifyRes.json();
     const updated = (verifyData.applications||[]).find(a=>a.appId===app.appId);
 

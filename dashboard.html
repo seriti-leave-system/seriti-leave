@@ -379,7 +379,7 @@ async function loadDashboard(){
     return;
   }
   try{
-    const res  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}`);
+    const res  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
     const data = await res.json();
     renderBalances(data.balances);
     renderApplications(data.applications);
@@ -511,7 +511,7 @@ async function submitLeave(){
     }
 
     /* Double-check it actually saved, in case the response was ambiguous for any reason */
-    const verifyRes  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}`);
+    const verifyRes  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
     const verifyData = await verifyRes.json();
     const saved = (verifyData.applications||[]).some(a=>a.appId===payload.appId);
 
