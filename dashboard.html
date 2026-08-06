@@ -214,7 +214,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
       <div class="field" id="emergencyOverrideBlock" style="display:none;">
         <div style="display:flex; align-items:flex-start; gap:8px;">
           <input type="checkbox" id="emergencyOverride" onchange="onEmergencyOverrideToggle()" style="width:auto; margin-top:3px;">
-          <label for="emergencyOverride" style="margin:0; font-weight:600; cursor:pointer; font-size:13px;">This is a genuine emergency — I need to apply despite short notice</label>
+          <label for="emergencyOverride" style="margin:0; font-weight:600; cursor:pointer; font-size:13px;">This is a genuine emergency, and I need to apply despite short notice</label>
         </div>
         <div class="hint">Your manager and HR will see this was submitted as a late-notice exception, and your Reason above (required) will explain why.</div>
       </div>
@@ -441,7 +441,7 @@ function checkAnnualNotice(){
 
   if(!enforced){
     // Grace period: inform, don't block, no override needed.
-    alert.textContent = `ℹ️ Heads-up: from ${formatDate(ANNUAL_NOTICE_ENFORCEMENT_START)}, annual leave of ${days || 'this many'} day(s) will need ${requiredLabel} notice under policy. This request is fine for now — no action needed while the system beds in.`;
+    alert.textContent = `ℹ️ Heads-up: from ${formatDate(ANNUAL_NOTICE_ENFORCEMENT_START)}, annual leave of ${days || 'this many'} day(s) will need ${requiredLabel} notice under policy. This request is fine for now. No action needed while the system beds in.`;
     alert.style.color = '#7D6608'; alert.style.background='var(--amber-pale)'; alert.style.borderColor='#F0D060';
     alert.classList.add('show');
     overrideBlock.style.display = 'none';
@@ -457,7 +457,7 @@ function checkAnnualNotice(){
   alert.classList.add('show');
   overrideBlock.style.display = 'block';
   annualNoticeBlocking = !overrideBox.checked;
-  reasonTag.textContent = overrideBox.checked ? 'required — please explain the emergency' : 'optional';
+  reasonTag.textContent = overrideBox.checked ? 'required: please explain the emergency' : 'optional';
   updateSubmitButtonState();
 }
 

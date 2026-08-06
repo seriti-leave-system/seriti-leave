@@ -137,7 +137,7 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
             <input type="hidden" id="regNameSelect">
             <div class="dropdown-options" id="regNameOptions"></div>
           </div>
-          <div class="hint" id="regNameHint">Don't see your name? Contact HR — your account needs to be set up first.</div>
+          <div class="hint" id="regNameHint">Don't see your name? Contact HR: your account needs to be set up first.</div>
         </div>
         <div class="field" id="regDetailsBlock" style="display:none;">
           <label>Email</label>
@@ -218,7 +218,7 @@ async function loadUnclaimedStaff(){
 
     input.disabled = false;
     input.placeholder = 'Start typing your name...';
-    document.getElementById('regNameHint').textContent = "Don't see your name? Contact HR — your account needs to be set up first.";
+    document.getElementById('regNameHint').textContent = "Don't see your name? Contact HR: your account needs to be set up first.";
     setupSearchableDropdown('regNameSearch', 'regNameSelect', 'regNameOptions', unclaimedStaffList, onStaffSelected);
   }catch(e){
     input.placeholder = 'Could not load staff list';
