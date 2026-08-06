@@ -92,12 +92,24 @@ tr:nth-child(even) td{background:#FAFCFA;}
 }
 .field textarea{resize:vertical; min-height:70px;}
 .field .hint{font-size:11.5px; color:var(--slate-soft); margin-top:4px;}
+
+.searchable-select{position:relative;}
+.dropdown-options{
+  display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
+  background:var(--white); border:1.5px solid var(--line); border-radius:9px;
+  max-height:220px; overflow-y:auto; z-index:1000; box-shadow:0 6px 18px rgba(0,0,0,0.08);
+}
+.dropdown-option{padding:10px 13px; font-size:14px; cursor:pointer;}
+.dropdown-option:hover, .dropdown-option.active{background:var(--brand-pale);}
+.dropdown-empty{padding:10px 13px; font-size:13px; color:var(--slate-soft);}
 .row-2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
 @media(max-width:500px){.row-2{grid-template-columns:1fr;}}
 
 /* Policy alert */
 .policy-alert{background:var(--amber-pale); border:1px solid #F0D060; border-radius:8px; padding:12px 14px; font-size:12.5px; color:#7D6608; margin-bottom:14px; display:none;}
 .policy-alert.show{display:block;}
+.notice-alert{background:var(--red-pale); border:1px solid rgba(192,57,43,0.35); border-radius:8px; padding:12px 14px; font-size:12.5px; color:var(--red); margin-bottom:14px; display:none; font-weight:600;}
+.notice-alert.show{display:block;}
 
 .modal-footer{padding:16px 24px; border-top:1px solid var(--line); display:flex; gap:10px; justify-content:flex-end;}
 .btn-secondary{padding:10px 18px; border-radius:8px; border:1.5px solid var(--line); background:var(--white); font-family:'Outfit',sans-serif; font-weight:600; font-size:13.5px; cursor:pointer; color:var(--slate-soft);}
@@ -167,6 +179,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
       </div>
 
       <div class="policy-alert" id="policyAlert"></div>
+      <div class="notice-alert" id="noticeAlert"></div>
 
       <div class="row-2">
         <div class="field">
@@ -188,14 +201,23 @@ tr:nth-child(even) td{background:#FAFCFA;}
         <div class="hint">Calculated automatically from your start and end dates.</div>
       </div>
       <div class="field">
-        <label for="reason">Reason <span style="font-weight:400; color:var(--slate-soft); font-size:11.5px;">optional</span></label>
+        <label for="reason">Reason <span id="reasonRequiredTag" style="font-weight:400; color:var(--slate-soft); font-size:11.5px;">optional</span></label>
         <textarea id="reason" placeholder="Brief reason for your leave application…"></textarea>
       </div>
+      <div class="field" id="emergencyOverrideBlock" style="display:none;">
+        <div style="display:flex; align-items:flex-start; gap:8px;">
+          <input type="checkbox" id="emergencyOverride" onchange="onEmergencyOverrideToggle()" style="width:auto; margin-top:3px;">
+          <label for="emergencyOverride" style="margin:0; font-weight:600; cursor:pointer; font-size:13px;">This is a genuine emergency — I need to apply despite short notice</label>
+        </div>
+        <div class="hint">Your manager and HR will see this was submitted as a late-notice exception, and your Reason above (required) will explain why.</div>
+      </div>
       <div class="field">
-        <label for="cover">Who will cover your responsibilities?</label>
-        <select id="cover">
-          <option value="">Select a colleague...</option>
-        </select>
+        <label for="coverSearch">Who will cover your responsibilities?</label>
+        <div class="searchable-select">
+          <input type="text" id="coverSearch" placeholder="Start typing a colleague's name..." autocomplete="off">
+          <input type="hidden" id="cover">
+          <div class="dropdown-options" id="coverOptions"></div>
+        </div>
       </div>
       <div class="field">
         <label for="contactPhone">Contact number during leave</label>
@@ -255,6 +277,7 @@ function onLeaveTypeChange(){
     alert.classList.remove('show');
   }
   updateAttachmentRequirement();
+  checkAnnualNotice();
 }
 
 /* ── Working days calculator ── */
@@ -277,6 +300,7 @@ function calcDays(){
     if(s) document.getElementById('endDate').value = s;
     document.getElementById('workingDays').value = s ? 0.5 : '';
     updateAttachmentRequirement();
+    checkAnnualNotice();
     return;
   }
 
@@ -288,6 +312,7 @@ function calcDays(){
   while(cur<=end){ if(cur.getDay()!==0&&cur.getDay()!==6) days++; cur.setDate(cur.getDate()+1); }
   document.getElementById('workingDays').value=days;
   updateAttachmentRequirement();
+  checkAnnualNotice();
 }
 
 function onHalfDayToggle(){
@@ -307,11 +332,16 @@ function onHalfDayToggle(){
 }
 
 /* ── Determine whether a supporting document is required ──
-   Per Seriti policy: a doctor's note is required for sick leave that's
-   more than 2 consecutive days, or starts on a Monday or Friday.
+   Per Seriti policy:
+   - Study, Maternity, and Paternity leave ALWAYS require proof
+     (exam timetable / medical note respectively) -- not optional.
+   - Sick leave requires a doctor's note when the request is for more
+     than 2 consecutive days, or starts on a Monday or Friday.
    (Public-holiday-adjacent days aren't checked automatically -- no
-   holiday calendar is loaded -- so that part of the policy still needs
-   a manual check by the manager.) */
+   holiday calendar is loaded -- so that part of the sick-leave policy
+   still needs a manual check by the manager.) */
+const ALWAYS_REQUIRE_PROOF = ['Study', 'Maternity', 'Paternity'];
+
 function updateAttachmentRequirement(){
   const type = document.getElementById('leaveType').value;
   const start = document.getElementById('startDate').value;
@@ -319,7 +349,9 @@ function updateAttachmentRequirement(){
   const tag   = document.getElementById('attachmentRequiredTag');
 
   let required = false;
-  if(type === 'Sick'){
+  if(ALWAYS_REQUIRE_PROOF.includes(type)){
+    required = true;
+  } else if(type === 'Sick'){
     if(days > 2) required = true;
     if(start){
       const dow = parseLocalDate(start).getDay(); // 0=Sun ... 1=Mon ... 5=Fri ... 6=Sat
@@ -329,13 +361,104 @@ function updateAttachmentRequirement(){
 
   attachmentRequired = required;
   if(required){
-    tag.textContent = 'required for this sick leave request';
+    tag.textContent = 'required for this leave type';
     tag.style.color = 'var(--red)';
   } else {
     tag.textContent = 'optional';
     tag.style.color = 'var(--slate-soft)';
   }
 }
+
+let annualNoticeOk = true;
+let annualNoticeBlocking = false; // true only when enforcement is active AND the request violates policy
+
+/* ── Grace period ──
+   Go-live is Fri 7 Aug 2026. Per management's decision, the notice
+   policy is shown to everyone from day one, but only actually BLOCKS
+   submissions from 21 Aug 2026 (2 weeks after go-live) -- giving staff
+   time to get used to the system before it becomes a hard rule. */
+const ANNUAL_NOTICE_ENFORCEMENT_START = '2026-08-21';
+
+function isAnnualNoticeEnforced(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  return today >= parseLocalDate(ANNUAL_NOTICE_ENFORCEMENT_START);
+}
+
+/* ── Enforce the annual leave advance-notice policy ──
+   Per Seriti policy: 1 week notice for annual leave requests under
+   5 working days, 3 weeks notice for requests of 5 or more consecutive
+   working days. Once enforcement is active (see grace period above),
+   blocks submission unless the person flags it as a genuine emergency
+   and explains why in the Reason field. */
+function checkAnnualNotice(){
+  const type   = document.getElementById('leaveType').value;
+  const start  = document.getElementById('startDate').value;
+  const days   = Number(document.getElementById('workingDays').value) || 0;
+  const alert  = document.getElementById('noticeAlert');
+  const overrideBlock = document.getElementById('emergencyOverrideBlock');
+  const overrideBox   = document.getElementById('emergencyOverride');
+  const reasonTag = document.getElementById('reasonRequiredTag');
+
+  annualNoticeOk = true;
+  annualNoticeBlocking = false;
+
+  if(type !== 'Annual' || !start){
+    alert.classList.remove('show');
+    overrideBlock.style.display = 'none';
+    overrideBox.checked = false;
+    reasonTag.textContent = 'optional';
+    updateSubmitButtonState();
+    return;
+  }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const startDateObj = parseLocalDate(start);
+  const noticeDaysGiven = Math.round((startDateObj - today) / 86400000);
+  const requiredDays = days >= 5 ? 21 : 7; // 3 weeks vs 1 week
+  const requiredLabel = days >= 5 ? '3 weeks' : '1 week';
+  const shortNotice = noticeDaysGiven < requiredDays;
+  const enforced = isAnnualNoticeEnforced();
+
+  if(!shortNotice){
+    alert.classList.remove('show');
+    overrideBlock.style.display = 'none';
+    overrideBox.checked = false;
+    reasonTag.textContent = 'optional';
+    updateSubmitButtonState();
+    return;
+  }
+
+  if(!enforced){
+    // Grace period: inform, don't block, no override needed.
+    alert.textContent = `ℹ️ Heads-up: from ${formatDate(ANNUAL_NOTICE_ENFORCEMENT_START)}, annual leave of ${days || 'this many'} day(s) will need ${requiredLabel} notice under policy. This request is fine for now — no action needed while the system beds in.`;
+    alert.style.color = '#7D6608'; alert.style.background='var(--amber-pale)'; alert.style.borderColor='#F0D060';
+    alert.classList.add('show');
+    overrideBlock.style.display = 'none';
+    overrideBox.checked = false;
+    reasonTag.textContent = 'optional';
+    updateSubmitButtonState();
+    return;
+  }
+
+  // Enforcement is active and this request is short-notice.
+  alert.textContent = `⚠️ Annual leave of ${days || 'this many'} day(s) requires ${requiredLabel} notice. Your start date gives ${noticeDaysGiven < 0 ? 0 : noticeDaysGiven} day(s) notice. Choose a later start date, or tick below if this is a genuine emergency.`;
+  alert.style.color = ''; alert.style.background=''; alert.style.borderColor=''; // reset to CSS defaults (red)
+  alert.classList.add('show');
+  overrideBlock.style.display = 'block';
+  annualNoticeBlocking = !overrideBox.checked;
+  reasonTag.textContent = overrideBox.checked ? 'required — please explain the emergency' : 'optional';
+  updateSubmitButtonState();
+}
+
+function onEmergencyOverrideToggle(){
+  checkAnnualNotice();
+}
+
+function updateSubmitButtonState(){
+  const btn = document.getElementById('submitLeaveBtn');
+  btn.disabled = annualNoticeBlocking;
+}
+
 
 function onAttachmentChange(){
   const input = document.getElementById('attachmentFile');
@@ -455,11 +578,18 @@ function closeModal(){
   document.getElementById('workingDays').value='';
   document.getElementById('reason').value='';
   document.getElementById('cover').value='';
+  document.getElementById('coverSearch').value='';
   document.getElementById('contactPhone').value='';
   document.getElementById('attachmentFile').value='';
   document.getElementById('attachmentError').style.display='none';
   document.getElementById('policyAlert').classList.remove('show');
+  document.getElementById('noticeAlert').classList.remove('show');
+  document.getElementById('emergencyOverrideBlock').style.display='none';
+  document.getElementById('emergencyOverride').checked=false;
+  document.getElementById('reasonRequiredTag').textContent='optional';
   document.getElementById('applyMsg').className='msg';
+  annualNoticeBlocking = false;
+  document.getElementById('submitLeaveBtn').disabled = false;
   attachmentRequired = false;
   attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
 }
@@ -480,18 +610,24 @@ async function submitLeave(){
   const coverStaff = allStaffList.find(s => s.email === coverEmail);
   const coverName  = coverStaff ? coverStaff.name : '';
   const phone = document.getElementById('contactPhone').value.trim();
+  const emergencyOverride = document.getElementById('emergencyOverride').checked;
 
   if(!type)  return showMsg('err','Please select a leave type.');
   if(!start) return showMsg('err','Please select a start date.');
   if(!end)   return showMsg('err','Please select an end date.');
   if(!days||days<=0) return showMsg('err','Please enter the number of working days.');
-  if(attachmentRequired && !attachmentBase64) return showMsg('err','A supporting document is required for this sick leave request.');
+  if(attachmentRequired && !attachmentBase64) return showMsg('err',`A supporting document is required for ${type} leave.`);
+  if(type === 'Annual' && emergencyOverride && reason.length < 10){
+    return showMsg('err','Please explain the emergency in the Reason field (at least a sentence) so your manager understands the late notice.');
+  }
+  if(type === 'Annual' && annualNoticeBlocking) return showMsg('err','This annual leave request does not meet the advance-notice policy. Please adjust your start date, or tick the emergency box and explain why.');
 
   const btn=document.getElementById('submitLeaveBtn');
   btn.disabled=true; btn.textContent='Submitting…';
 
   const payload={
     action:'apply',
+    annualNoticeEmergencyOverride: (type === 'Annual' && emergencyOverride),
     email:user.email, name:user.name, department:user.dept,
     managerEmail:user.managerEmail,
     leaveType:type, startDate:start, endDate:end, workingDays:days,
@@ -535,20 +671,63 @@ function signOut(){
 
 let allStaffList = [];
 async function loadAllStaffForCoverDropdown(){
-  const sel = document.getElementById('cover');
+  const input = document.getElementById('coverSearch');
   if(SCRIPT_URL.includes('PASTE_YOUR')) return;
   try{
     const res  = await fetch(`${SCRIPT_URL}?action=allStaff`);
     const data = await res.json();
     allStaffList = (data.staff || []).filter(s => s.email !== user.email); // exclude yourself
 
-    sel.innerHTML = '<option value="">Select a colleague...</option>' +
-      allStaffList.map(s=>`<option value="${escAttr(s.email)}">${escH(s.name)}</option>`).join('');
+    setupSearchableDropdown('coverSearch', 'cover', 'coverOptions', allStaffList);
   }catch(e){
-    sel.innerHTML = '<option value="">Could not load staff list</option>';
+    input.placeholder = 'Could not load staff list';
   }
 }
 function escAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+/* ── Reusable typeahead combobox ──
+   inputId: visible text field the person types into
+   hiddenId: hidden field that only gets set once a real option is clicked
+             (this is what stops people submitting free text that doesn't
+             match an actual staff record)
+   optionsId: the dropdown list container
+   dataArray: array of {name, email, ...} staff records */
+function setupSearchableDropdown(inputId, hiddenId, optionsId, dataArray){
+  const input  = document.getElementById(inputId);
+  const hidden = document.getElementById(hiddenId);
+  const box    = document.getElementById(optionsId);
+
+  function render(filter){
+    box.innerHTML = '';
+    const f = (filter||'').trim().toLowerCase();
+    if(!f){ box.style.display='none'; return; }
+
+    const matches = dataArray.filter(s => (s.name||'').toLowerCase().includes(f)).slice(0, 8);
+    if(!matches.length){
+      box.innerHTML = '<div class="dropdown-empty">No matching name found</div>';
+      box.style.display = 'block';
+      return;
+    }
+    matches.forEach(s=>{
+      const opt = document.createElement('div');
+      opt.className = 'dropdown-option';
+      opt.textContent = s.name;
+      opt.onclick = ()=>{
+        input.value = s.name;
+        hidden.value = s.email;
+        box.style.display = 'none';
+      };
+      box.appendChild(opt);
+    });
+    box.style.display = 'block';
+  }
+
+  input.addEventListener('input', ()=>{ hidden.value=''; render(input.value); });
+  input.addEventListener('focus', ()=> render(input.value));
+  document.addEventListener('click', (e)=>{
+    if(!input.contains(e.target) && !box.contains(e.target)) box.style.display='none';
+  });
+}
 
 loadDashboard();
 loadAllStaffForCoverDropdown();
