@@ -122,6 +122,9 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </div>
         <button class="btn" onclick="handleLogin()">Sign in</button>
         <div class="msg" id="loginMsg"></div>
+        <p style="font-size:12.5px; color:var(--slate-soft); text-align:center; margin-top:12px;">
+          <a href="#" onclick="showForgotPanel(); return false;" style="color:var(--brand); font-weight:600; text-decoration:none;">Forgot your password?</a>
+        </p>
       </div>
 
       <!-- REGISTER FORM -->
@@ -180,6 +183,48 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </p>
       </div>
 
+      <!-- FORGOT PASSWORD: request code -->
+      <div id="forgotForm" style="display:none;">
+        <p style="font-size:13.5px; color:var(--slate-soft); margin-bottom:16px;">
+          Enter your work email and we'll send you a code to reset your password.
+        </p>
+        <div class="field">
+          <label for="forgotEmail">Work email</label>
+          <input type="email" id="forgotEmail" placeholder="your.name@seriti.org.za">
+        </div>
+        <button class="btn" onclick="handleForgotPassword()">Send reset code</button>
+        <div class="msg" id="forgotMsg"></div>
+        <div class="divider"></div>
+        <p style="font-size:12.5px; color:var(--slate-soft); text-align:center;">
+          <a href="#" onclick="showTab('login'); return false;" style="color:var(--brand); font-weight:600; text-decoration:none;">Back to sign in</a>
+        </p>
+      </div>
+
+      <!-- FORGOT PASSWORD: enter code + new password -->
+      <div id="resetForm" style="display:none;">
+        <p style="font-size:13.5px; color:var(--slate-soft); margin-bottom:16px;">
+          Enter the 6-digit code sent to <strong id="resetEmailLabel"></strong>, along with your new password. The code expires in 15 minutes.
+        </p>
+        <div class="field">
+          <label for="resetCode">Reset code</label>
+          <input type="text" id="resetCode" placeholder="e.g. 482913" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        </div>
+        <div class="field">
+          <label for="resetPassword">New password</label>
+          <input type="password" id="resetPassword" placeholder="At least 8 characters">
+        </div>
+        <div class="field">
+          <label for="resetConfirm">Confirm new password</label>
+          <input type="password" id="resetConfirm" placeholder="Re-enter your new password">
+        </div>
+        <button class="btn" onclick="handleResetPassword()">Reset password</button>
+        <div class="msg" id="resetMsg"></div>
+        <div class="divider"></div>
+        <p style="font-size:12.5px; color:var(--slate-soft); text-align:center;">
+          Didn't get a code? <a href="#" onclick="handleForgotPassword(); return false;" style="color:var(--brand); font-weight:600; text-decoration:none;">Send it again</a>
+        </p>
+      </div>
+
     </div>
   </div>
 </div>
@@ -195,11 +240,79 @@ function showTab(tab){
   document.getElementById('loginForm').style.display    = tab==='login'    ? 'block' : 'none';
   document.getElementById('registerForm').style.display = tab==='register' ? 'block' : 'none';
   document.getElementById('verifyForm').style.display    = 'none';
+  document.getElementById('forgotForm').style.display    = 'none';
+  document.getElementById('resetForm').style.display     = 'none';
   document.querySelectorAll('.tab').forEach(t=>t.style.display='inline-block');
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('loginMsg').className='msg';
   document.getElementById('registerMsg').className='msg';
   if(tab==='register') loadUnclaimedStaff();
+}
+
+let pendingResetEmail = "";
+
+function showForgotPanel(){
+  document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
+  document.getElementById('loginForm').style.display='none';
+  document.getElementById('registerForm').style.display='none';
+  document.getElementById('verifyForm').style.display='none';
+  document.getElementById('resetForm').style.display='none';
+  document.getElementById('forgotForm').style.display='block';
+  document.getElementById('forgotMsg').className='msg';
+}
+
+async function handleForgotPassword(){
+  const emailField = document.getElementById('forgotEmail');
+  // If we're re-sending from the reset panel itself, reuse the email
+  // already confirmed rather than requiring the person to retype it.
+  const email = (pendingResetEmail || emailField.value).trim().toLowerCase();
+
+  if(!email) return showMsg('forgotMsg','err','Please enter your work email.');
+
+  try{
+    showMsg('forgotMsg','ok','Sending code…');
+    const res  = await fetch(SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify({ action:'forgotPassword', email }) });
+    const data = await res.json();
+
+    if(data.success){
+      pendingResetEmail = email;
+      document.getElementById('resetEmailLabel').textContent = email;
+      document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
+      document.getElementById('forgotForm').style.display='none';
+      document.getElementById('resetForm').style.display='block';
+      document.getElementById('resetMsg').className='msg';
+    } else {
+      showMsg('forgotMsg','err', data.message || 'Could not send reset code. Please try again.');
+    }
+  }catch(e){
+    showMsg('forgotMsg','err','Could not connect. Please try again.');
+  }
+}
+
+async function handleResetPassword(){
+  const code = document.getElementById('resetCode').value.trim();
+  const pw   = document.getElementById('resetPassword').value;
+  const pw2  = document.getElementById('resetConfirm').value;
+
+  if(!code) return showMsg('resetMsg','err','Please enter the 6-digit code from your email.');
+  if(pw.length<8) return showMsg('resetMsg','err','Password must be at least 8 characters.');
+  if(pw!==pw2) return showMsg('resetMsg','err','Passwords do not match.');
+
+  try{
+    showMsg('resetMsg','ok','Resetting password…');
+    const newPasswordHash = await hashPassword(pw);
+    const res  = await fetch(SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify({ action:'resetPassword', email:pendingResetEmail, code, newPasswordHash }) });
+    const data = await res.json();
+
+    if(data.success){
+      showMsg('resetMsg','ok','Password reset! Redirecting to sign in…');
+      setTimeout(()=>{ showTab('login'); document.getElementById('loginEmail').value=pendingResetEmail; pendingResetEmail=""; },1500);
+    } else {
+      showMsg('resetMsg','err', data.message || 'Could not reset password. Please try again.');
+    }
+  }catch(e){
+    showMsg('resetMsg','err','Could not connect. Please try again.');
+  }
 }
 
 async function loadUnclaimedStaff(){
