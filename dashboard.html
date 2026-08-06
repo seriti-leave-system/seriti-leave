@@ -94,6 +94,13 @@ tr:nth-child(even) td{background:#FAFCFA;}
 .field .hint{font-size:11.5px; color:var(--slate-soft); margin-top:4px;}
 
 .searchable-select{position:relative;}
+.searchable-select input[type="text"]{padding-right:34px;}
+.clear-btn{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+  background:none; border:none; color:var(--slate-soft); font-size:15px;
+  cursor:pointer; padding:4px 6px; line-height:1;
+}
+.clear-btn:hover{color:var(--red);}
 .dropdown-options{
   display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
   background:var(--white); border:1.5px solid var(--line); border-radius:9px;
@@ -214,7 +221,11 @@ tr:nth-child(even) td{background:#FAFCFA;}
       <div class="field">
         <label for="coverSearch">Who will cover your responsibilities?</label>
         <div class="searchable-select">
-          <input type="text" id="coverSearch" placeholder="Start typing a colleague's name..." autocomplete="off">
+          <input type="text" id="coverSearch" name="staff_lookup_2"
+                 placeholder="Start typing a colleague's name..." autocomplete="off"
+                 autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other">
+          <button type="button" class="clear-btn" id="coverSearchClear" onclick="clearSearchable('coverSearch','cover','coverOptions')" style="display:none;" aria-label="Clear">✕</button>
           <input type="hidden" id="cover">
           <div class="dropdown-options" id="coverOptions"></div>
         </div>
@@ -579,6 +590,7 @@ function closeModal(){
   document.getElementById('reason').value='';
   document.getElementById('cover').value='';
   document.getElementById('coverSearch').value='';
+  document.getElementById('coverSearchClear').style.display='none';
   document.getElementById('contactPhone').value='';
   document.getElementById('attachmentFile').value='';
   document.getElementById('attachmentError').style.display='none';
@@ -696,6 +708,11 @@ function setupSearchableDropdown(inputId, hiddenId, optionsId, dataArray){
   const input  = document.getElementById(inputId);
   const hidden = document.getElementById(hiddenId);
   const box    = document.getElementById(optionsId);
+  const clearBtn = document.getElementById(inputId + 'Clear');
+
+  function toggleClearBtn(){
+    if(clearBtn) clearBtn.style.display = input.value ? 'block' : 'none';
+  }
 
   function render(filter){
     box.innerHTML = '';
@@ -716,17 +733,37 @@ function setupSearchableDropdown(inputId, hiddenId, optionsId, dataArray){
         input.value = s.name;
         hidden.value = s.email;
         box.style.display = 'none';
+        toggleClearBtn();
       };
       box.appendChild(opt);
     });
     box.style.display = 'block';
   }
 
-  input.addEventListener('input', ()=>{ hidden.value=''; render(input.value); });
+  // input: fires on every keystroke -- including backspace/delete -- so the
+  // dropdown always reflects exactly what's currently typed. Clearing the
+  // hidden field here means a name only "counts" once someone clicks a real
+  // option below, not just because the text happens to match.
+  input.addEventListener('input', ()=>{ hidden.value=''; toggleClearBtn(); render(input.value); });
   input.addEventListener('focus', ()=> render(input.value));
+  // Enter shouldn't do anything unexpected -- some mobile keyboards treat it
+  // as "confirm suggestion" -- so swallow it to keep typing/backspacing normal.
+  input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') e.preventDefault(); });
   document.addEventListener('click', (e)=>{
     if(!input.contains(e.target) && !box.contains(e.target)) box.style.display='none';
   });
+  toggleClearBtn();
+}
+
+/* Lets someone wipe a wrongly-picked or auto-filled name in one tap,
+   instead of having to hold backspace. */
+function clearSearchable(inputId, hiddenId, optionsId){
+  document.getElementById(inputId).value = '';
+  document.getElementById(hiddenId).value = '';
+  document.getElementById(optionsId).style.display = 'none';
+  const clearBtn = document.getElementById(inputId + 'Clear');
+  if(clearBtn) clearBtn.style.display = 'none';
+  document.getElementById(inputId).focus();
 }
 
 loadDashboard();
