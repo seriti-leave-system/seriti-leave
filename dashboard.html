@@ -260,7 +260,7 @@ const MAX_ATTACHMENT_MB = 5;
 
 /* ── Session check ── */
 const userStr = sessionStorage.getItem('seriti_user');
-if(!userStr){ window.location.href='login.html'; }
+if(!userStr){ sessionStorage.setItem('seriti_return_to','dashboard.html'); window.location.href='login.html'; }
 const user = JSON.parse(userStr);
 
 document.getElementById('navName').textContent = user.name;
