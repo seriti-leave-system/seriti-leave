@@ -55,6 +55,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
 .badge.pending{background:var(--amber-pale); color:var(--amber);}
 .badge.approved{background:var(--green-pale); color:var(--green);}
 .badge.declined{background:var(--red-pale); color:var(--red);}
+.badge.cancelled{background:var(--line); color:var(--slate-soft);}
 
 /* STAFF BALANCES */
 .section-head{font-size:17px; font-weight:700; margin-bottom:14px; font-family:'Outfit',sans-serif;}
@@ -117,9 +118,32 @@ tr:nth-child(even) td{background:#FAFCFA;}
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9hzr_FHyzN-SXSmOhG7aBUIF84PpOX44yhBn_dC9QSwCAqjKzHRDyGkLtZAh2XgX5Zg/exec";
 
-const userStr = sessionStorage.getItem('seriti_user');
-if(!userStr){ sessionStorage.setItem('seriti_return_to','hr.html'); window.location.href='login.html'; }
-const user = JSON.parse(userStr);
+/* Same "recently logged in" window as login.html -- see that file for the
+   full explanation. sessionStorage alone doesn't survive a fresh tab (e.g.
+   clicking an approval link from an email client), so this falls back to
+   localStorage when needed instead of forcing a re-login every time. */
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+function loadSeritiSession(){
+  let raw = sessionStorage.getItem('seriti_user');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  raw = localStorage.getItem('seriti_user');
+  if(!raw) return null;
+  try{
+    const stored = JSON.parse(raw);
+    if(!stored.savedAt || (Date.now() - stored.savedAt) > SESSION_TTL_MS){
+      localStorage.removeItem('seriti_user');
+      return null;
+    }
+    stored.savedAt = Date.now();
+    sessionStorage.setItem('seriti_user', JSON.stringify(stored));
+    localStorage.setItem('seriti_user', JSON.stringify(stored));
+    return stored;
+  }catch(e){ return null; }
+}
+
+const user = loadSeritiSession();
+if(!user){ sessionStorage.setItem('seriti_return_to','hr.html'); window.location.href='login.html'; }
 document.getElementById('navName').textContent = user.name;
 
 let allApps=[], allStaff=[];
@@ -243,6 +267,7 @@ function exportCSV(){
 
 function signOut(){
   sessionStorage.removeItem('seriti_user');
+  localStorage.removeItem('seriti_user');
   window.location.href='login.html';
 }
 

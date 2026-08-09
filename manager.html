@@ -48,6 +48,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
 .badge.pending{background:var(--amber-pale); color:var(--amber);}
 .badge.approved{background:var(--green-pale); color:var(--green);}
 .badge.declined{background:var(--red-pale); color:var(--red);}
+.badge.cancelled{background:var(--line); color:var(--slate-soft);}
 
 .app-details{padding:0 18px 14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px;}
 .detail{font-size:12.5px;}
@@ -92,6 +93,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
     <button class="ftab" onclick="filterApps('Pending',this)">Pending</button>
     <button class="ftab" onclick="filterApps('Approved',this)">Approved</button>
     <button class="ftab" onclick="filterApps('Declined',this)">Declined</button>
+    <button class="ftab" onclick="filterApps('Cancelled',this)">Cancelled</button>
   </div>
 
   <div id="appsContainer"><div class="loading">Loading applications…</div></div>
@@ -100,9 +102,32 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9hzr_FHyzN-SXSmOhG7aBUIF84PpOX44yhBn_dC9QSwCAqjKzHRDyGkLtZAh2XgX5Zg/exec";
 
-const userStr = sessionStorage.getItem('seriti_user');
-if(!userStr){ sessionStorage.setItem('seriti_return_to','manager.html'); window.location.href='login.html'; }
-const user = JSON.parse(userStr);
+/* Same "recently logged in" window as login.html -- see that file for the
+   full explanation. sessionStorage alone doesn't survive a fresh tab (e.g.
+   clicking an approval link from an email client), so this falls back to
+   localStorage when needed instead of forcing a re-login every time. */
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+function loadSeritiSession(){
+  let raw = sessionStorage.getItem('seriti_user');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  raw = localStorage.getItem('seriti_user');
+  if(!raw) return null;
+  try{
+    const stored = JSON.parse(raw);
+    if(!stored.savedAt || (Date.now() - stored.savedAt) > SESSION_TTL_MS){
+      localStorage.removeItem('seriti_user');
+      return null;
+    }
+    stored.savedAt = Date.now();
+    sessionStorage.setItem('seriti_user', JSON.stringify(stored));
+    localStorage.setItem('seriti_user', JSON.stringify(stored));
+    return stored;
+  }catch(e){ return null; }
+}
+
+const user = loadSeritiSession();
+if(!user){ sessionStorage.setItem('seriti_return_to','manager.html'); window.location.href='login.html'; }
 document.getElementById('navName').textContent = user.name;
 
 let allApps = [];
@@ -195,7 +220,7 @@ async function decide(i, decision){
   btns.forEach(b=>b.disabled=true);
 
   const payload={
-    action:'decide', appId:app.appId, status:decision,
+    action:'decide', hash:user.hash, appId:app.appId, status:decision,
     managerNote:note, managerEmail:user.email, managerName:user.name,
     employeeEmail:app.email, employeeName:app.name,
     leaveType:app.leaveType, startDate:app.startDate, endDate:app.endDate, workingDays:app.workingDays
@@ -204,14 +229,24 @@ async function decide(i, decision){
   try{
     await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
 
-    /* Verify the decision actually saved before updating the UI */
+    /* Verify the decision actually saved before updating the UI. mode:'no-cors'
+       means we can't read the POST response directly (including any rejection
+       message from the server, e.g. "no longer Pending"), so this verify step
+       is also how a stale/rejected decision gets detected. */
     const verifyRes  = await fetch(`${SCRIPT_URL}?action=managerApps&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
     const verifyData = await verifyRes.json();
     const updated = (verifyData.applications||[]).find(a=>a.appId===app.appId);
 
+    // Always resync the full list from the server here, not just this one
+    // application -- if this decision was rejected because the employee
+    // cancelled it (or someone else already decided it), the manager's
+    // whole view may be stale, not just this card.
+    allApps = verifyData.applications || allApps;
+
     if(updated && updated.status===decision){
-      const masterIndex = allApps.findIndex(a=>a.appId===app.appId);
-      if(masterIndex>-1){ allApps[masterIndex].status=decision; allApps[masterIndex].managerNote=note; }
+      renderApps();
+    } else if(updated && updated.status !== 'Pending'){
+      alert(`This application is no longer Pending (current status: ${updated.status}) -- it may have been cancelled by the employee, or already decided elsewhere. The list has been refreshed.`);
       renderApps();
     } else {
       btns.forEach(b=>b.disabled=false);
@@ -225,6 +260,7 @@ async function decide(i, decision){
 
 function signOut(){
   sessionStorage.removeItem('seriti_user');
+  localStorage.removeItem('seriti_user');
   window.location.href='login.html';
 }
 

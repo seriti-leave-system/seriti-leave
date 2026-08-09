@@ -233,6 +233,55 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9hzr_FHyzN-SXSmOhG7aBUIF84PpOX44yhBn_dC9QSwCAqjKzHRDyGkLtZAh2XgX5Zg/exec";
+
+/* "Recently logged in" window -- how long a login stays valid across tabs/
+   browser restarts before requiring a fresh sign-in. sessionStorage alone
+   (the old behavior) gets wiped every time a NEW tab opens -- which is
+   exactly what happens when someone clicks an approval link from an email
+   client, even seconds after they were last using the system in another
+   tab. localStorage survives across tabs, so this is what makes "click the
+   email link, land straight on the approval page" possible. */
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+function loadSeritiSession(){
+  // This tab's own sessionStorage first -- fastest path, normal navigation.
+  let raw = sessionStorage.getItem('seriti_user');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+
+  // Fall back to localStorage -- covers a fresh tab (e.g. an email link)
+  // where sessionStorage is empty but the person was recently logged in.
+  raw = localStorage.getItem('seriti_user');
+  if(!raw) return null;
+  try{
+    const stored = JSON.parse(raw);
+    if(!stored.savedAt || (Date.now() - stored.savedAt) > SESSION_TTL_MS){
+      localStorage.removeItem('seriti_user'); // past the "recently logged in" window
+      return null;
+    }
+    // Still recent -- hydrate this tab and slide the expiry forward since
+    // they're actively using the system right now.
+    stored.savedAt = Date.now();
+    sessionStorage.setItem('seriti_user', JSON.stringify(stored));
+    localStorage.setItem('seriti_user', JSON.stringify(stored));
+    return stored;
+  }catch(e){ return null; }
+}
+
+/* If someone was recently logged in -- even in a different tab, e.g. they
+   clicked the approval link straight from a manager-notification email --
+   skip the login form entirely and send them where they were headed.
+   Only people who weren't recently active still have to sign in. */
+(function autoRedirectIfRecentlyLoggedIn(){
+  const existing = loadSeritiSession();
+  if(!existing) return;
+  const returnTo = sessionStorage.getItem('seriti_return_to');
+  sessionStorage.removeItem('seriti_return_to');
+  if(returnTo) window.location.href = returnTo;
+  else if(existing.role==='hr') window.location.href='hr.html';
+  else if(existing.role==='manager') window.location.href='manager.html';
+  else window.location.href='dashboard.html';
+})();
+
 let pendingVerifyEmail = "";
 let unclaimedStaffList = [];
 
@@ -544,11 +593,13 @@ async function handleLogin(){
     const data = await res.json();
 
     if(data.success){
-      /* Store session in sessionStorage (cleared when tab closes) --
-         the hash is included so dashboard/manager/hr pages can prove
-         who's asking when they request data, not just state who they are. */
-      const userWithHash = Object.assign({}, data.user, { hash });
+      /* Store session in BOTH sessionStorage (this tab) and localStorage
+         (survives across tabs/browser restarts, within SESSION_TTL_MS) --
+         the hash is included so dashboard/manager/hr pages can prove who's
+         asking when they request data, not just state who they are. */
+      const userWithHash = Object.assign({}, data.user, { hash, savedAt: Date.now() });
       sessionStorage.setItem('seriti_user', JSON.stringify(userWithHash));
+      localStorage.setItem('seriti_user', JSON.stringify(userWithHash));
       /* Route by role -- but honor a specific page the person was
          actually trying to reach (e.g. clicked a manager-approval link
          from an email) over the generic role-based default, so signing

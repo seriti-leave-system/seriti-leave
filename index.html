@@ -59,6 +59,23 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
 }
 .field .hint{font-size:11.5px; color:var(--slate-soft); margin-top:5px;}
 
+.searchable-select{position:relative;}
+.searchable-select input[type="text"]{padding-right:34px;}
+.clear-btn{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+  background:none; border:none; color:var(--slate-soft); font-size:15px;
+  cursor:pointer; padding:4px 6px; line-height:1;
+}
+.clear-btn:hover{color:var(--red);}
+.dropdown-options{
+  display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
+  background:var(--white); border:1.5px solid var(--line); border-radius:9px;
+  max-height:220px; overflow-y:auto; z-index:1000; box-shadow:0 6px 18px rgba(0,0,0,0.08);
+}
+.dropdown-option{padding:10px 13px; font-size:14px; cursor:pointer;}
+.dropdown-option:hover, .dropdown-option.active{background:var(--brand-pale);}
+.dropdown-empty{padding:10px 13px; font-size:13px; color:var(--slate-soft);}
+
 .btn{
   width:100%; background:var(--brand); color:#fff; border:none;
   padding:13px; border-radius:9px; font-family:'Outfit',sans-serif;
@@ -105,16 +122,25 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </div>
         <button class="btn" onclick="handleLogin()">Sign in</button>
         <div class="msg" id="loginMsg"></div>
+        <p style="font-size:12.5px; color:var(--slate-soft); text-align:center; margin-top:12px;">
+          <a href="#" onclick="showForgotPanel(); return false;" style="color:var(--brand); font-weight:600; text-decoration:none;">Forgot your password?</a>
+        </p>
       </div>
 
       <!-- REGISTER FORM -->
       <div id="registerForm" style="display:none;">
         <div class="field">
-          <label for="regNameSelect">Your name</label>
-          <select id="regNameSelect" onchange="onStaffSelected()">
-            <option value="">Loading staff list...</option>
-          </select>
-          <div class="hint" id="regNameHint">Don't see your name? Contact HR — your account needs to be set up first.</div>
+          <label for="regNameSearch">Your name</label>
+          <div class="searchable-select">
+            <input type="text" id="regNameSearch" name="staff_lookup_1"
+                   placeholder="Loading staff list..." autocomplete="off"
+                   autocorrect="off" autocapitalize="off" spellcheck="false"
+                   data-lpignore="true" data-form-type="other" disabled>
+            <button type="button" class="clear-btn" id="regNameSearchClear" onclick="clearSearchable('regNameSearch','regNameSelect','regNameOptions')" style="display:none;" aria-label="Clear">✕</button>
+            <input type="hidden" id="regNameSelect">
+            <div class="dropdown-options" id="regNameOptions"></div>
+          </div>
+          <div class="hint" id="regNameHint">Don't see your name? Contact HR: your account needs to be set up first.</div>
         </div>
         <div class="field" id="regDetailsBlock" style="display:none;">
           <label>Email</label>
@@ -157,6 +183,48 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </p>
       </div>
 
+      <!-- FORGOT PASSWORD: request code -->
+      <div id="forgotForm" style="display:none;">
+        <p style="font-size:13.5px; color:var(--slate-soft); margin-bottom:16px;">
+          Enter your work email and we'll send you a code to reset your password.
+        </p>
+        <div class="field">
+          <label for="forgotEmail">Work email</label>
+          <input type="email" id="forgotEmail" placeholder="your.name@seriti.org.za">
+        </div>
+        <button class="btn" onclick="handleForgotPassword()">Send reset code</button>
+        <div class="msg" id="forgotMsg"></div>
+        <div class="divider"></div>
+        <p style="font-size:12.5px; color:var(--slate-soft); text-align:center;">
+          <a href="#" onclick="showTab('login'); return false;" style="color:var(--brand); font-weight:600; text-decoration:none;">Back to sign in</a>
+        </p>
+      </div>
+
+      <!-- FORGOT PASSWORD: enter code + new password -->
+      <div id="resetForm" style="display:none;">
+        <p style="font-size:13.5px; color:var(--slate-soft); margin-bottom:16px;">
+          Enter the 6-digit code sent to <strong id="resetEmailLabel"></strong>, along with your new password. The code expires in 15 minutes.
+        </p>
+        <div class="field">
+          <label for="resetCode">Reset code</label>
+          <input type="text" id="resetCode" placeholder="e.g. 482913" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        </div>
+        <div class="field">
+          <label for="resetPassword">New password</label>
+          <input type="password" id="resetPassword" placeholder="At least 8 characters">
+        </div>
+        <div class="field">
+          <label for="resetConfirm">Confirm new password</label>
+          <input type="password" id="resetConfirm" placeholder="Re-enter your new password">
+        </div>
+        <button class="btn" onclick="handleResetPassword()">Reset password</button>
+        <div class="msg" id="resetMsg"></div>
+        <div class="divider"></div>
+        <p style="font-size:12.5px; color:var(--slate-soft); text-align:center;">
+          Didn't get a code? <a href="#" onclick="handleForgotPassword(); return false;" style="color:var(--brand); font-weight:600; text-decoration:none;">Send it again</a>
+        </p>
+      </div>
+
     </div>
   </div>
 </div>
@@ -165,6 +233,55 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9hzr_FHyzN-SXSmOhG7aBUIF84PpOX44yhBn_dC9QSwCAqjKzHRDyGkLtZAh2XgX5Zg/exec";
+
+/* "Recently logged in" window -- how long a login stays valid across tabs/
+   browser restarts before requiring a fresh sign-in. sessionStorage alone
+   (the old behavior) gets wiped every time a NEW tab opens -- which is
+   exactly what happens when someone clicks an approval link from an email
+   client, even seconds after they were last using the system in another
+   tab. localStorage survives across tabs, so this is what makes "click the
+   email link, land straight on the approval page" possible. */
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+function loadSeritiSession(){
+  // This tab's own sessionStorage first -- fastest path, normal navigation.
+  let raw = sessionStorage.getItem('seriti_user');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+
+  // Fall back to localStorage -- covers a fresh tab (e.g. an email link)
+  // where sessionStorage is empty but the person was recently logged in.
+  raw = localStorage.getItem('seriti_user');
+  if(!raw) return null;
+  try{
+    const stored = JSON.parse(raw);
+    if(!stored.savedAt || (Date.now() - stored.savedAt) > SESSION_TTL_MS){
+      localStorage.removeItem('seriti_user'); // past the "recently logged in" window
+      return null;
+    }
+    // Still recent -- hydrate this tab and slide the expiry forward since
+    // they're actively using the system right now.
+    stored.savedAt = Date.now();
+    sessionStorage.setItem('seriti_user', JSON.stringify(stored));
+    localStorage.setItem('seriti_user', JSON.stringify(stored));
+    return stored;
+  }catch(e){ return null; }
+}
+
+/* If someone was recently logged in -- even in a different tab, e.g. they
+   clicked the approval link straight from a manager-notification email --
+   skip the login form entirely and send them where they were headed.
+   Only people who weren't recently active still have to sign in. */
+(function autoRedirectIfRecentlyLoggedIn(){
+  const existing = loadSeritiSession();
+  if(!existing) return;
+  const returnTo = sessionStorage.getItem('seriti_return_to');
+  sessionStorage.removeItem('seriti_return_to');
+  if(returnTo) window.location.href = returnTo;
+  else if(existing.role==='hr') window.location.href='hr.html';
+  else if(existing.role==='manager') window.location.href='manager.html';
+  else window.location.href='dashboard.html';
+})();
+
 let pendingVerifyEmail = "";
 let unclaimedStaffList = [];
 
@@ -172,6 +289,8 @@ function showTab(tab){
   document.getElementById('loginForm').style.display    = tab==='login'    ? 'block' : 'none';
   document.getElementById('registerForm').style.display = tab==='register' ? 'block' : 'none';
   document.getElementById('verifyForm').style.display    = 'none';
+  document.getElementById('forgotForm').style.display    = 'none';
+  document.getElementById('resetForm').style.display     = 'none';
   document.querySelectorAll('.tab').forEach(t=>t.style.display='inline-block');
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('loginMsg').className='msg';
@@ -179,8 +298,74 @@ function showTab(tab){
   if(tab==='register') loadUnclaimedStaff();
 }
 
+let pendingResetEmail = "";
+
+function showForgotPanel(){
+  document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
+  document.getElementById('loginForm').style.display='none';
+  document.getElementById('registerForm').style.display='none';
+  document.getElementById('verifyForm').style.display='none';
+  document.getElementById('resetForm').style.display='none';
+  document.getElementById('forgotForm').style.display='block';
+  document.getElementById('forgotMsg').className='msg';
+}
+
+async function handleForgotPassword(){
+  const emailField = document.getElementById('forgotEmail');
+  // If we're re-sending from the reset panel itself, reuse the email
+  // already confirmed rather than requiring the person to retype it.
+  const email = (pendingResetEmail || emailField.value).trim().toLowerCase();
+
+  if(!email) return showMsg('forgotMsg','err','Please enter your work email.');
+
+  try{
+    showMsg('forgotMsg','ok','Sending code…');
+    const res  = await fetch(SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify({ action:'forgotPassword', email }) });
+    const data = await res.json();
+
+    if(data.success){
+      pendingResetEmail = email;
+      document.getElementById('resetEmailLabel').textContent = email;
+      document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
+      document.getElementById('forgotForm').style.display='none';
+      document.getElementById('resetForm').style.display='block';
+      document.getElementById('resetMsg').className='msg';
+    } else {
+      showMsg('forgotMsg','err', data.message || 'Could not send reset code. Please try again.');
+    }
+  }catch(e){
+    showMsg('forgotMsg','err','Could not connect. Please try again.');
+  }
+}
+
+async function handleResetPassword(){
+  const code = document.getElementById('resetCode').value.trim();
+  const pw   = document.getElementById('resetPassword').value;
+  const pw2  = document.getElementById('resetConfirm').value;
+
+  if(!code) return showMsg('resetMsg','err','Please enter the 6-digit code from your email.');
+  if(pw.length<8) return showMsg('resetMsg','err','Password must be at least 8 characters.');
+  if(pw!==pw2) return showMsg('resetMsg','err','Passwords do not match.');
+
+  try{
+    showMsg('resetMsg','ok','Resetting password…');
+    const newPasswordHash = await hashPassword(pw);
+    const res  = await fetch(SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify({ action:'resetPassword', email:pendingResetEmail, code, newPasswordHash }) });
+    const data = await res.json();
+
+    if(data.success){
+      showMsg('resetMsg','ok','Password reset! Redirecting to sign in…');
+      setTimeout(()=>{ showTab('login'); document.getElementById('loginEmail').value=pendingResetEmail; pendingResetEmail=""; },1500);
+    } else {
+      showMsg('resetMsg','err', data.message || 'Could not reset password. Please try again.');
+    }
+  }catch(e){
+    showMsg('resetMsg','err','Could not connect. Please try again.');
+  }
+}
+
 async function loadUnclaimedStaff(){
-  const sel = document.getElementById('regNameSelect');
+  const input = document.getElementById('regNameSearch');
   if(SCRIPT_URL.includes('PASTE_YOUR')) return;
   try{
     const res  = await fetch(`${SCRIPT_URL}?action=unclaimedStaff`);
@@ -188,17 +373,91 @@ async function loadUnclaimedStaff(){
     unclaimedStaffList = data.staff || [];
 
     if(!unclaimedStaffList.length){
-      sel.innerHTML = '<option value="">No accounts available</option>';
+      input.placeholder = 'No accounts available';
       document.getElementById('regNameHint').textContent = 'No accounts are ready to claim yet. Please contact HR.';
       return;
     }
 
-    sel.innerHTML = '<option value="">Select your name...</option>' +
-      unclaimedStaffList.map(s=>`<option value="${escAttr(s.email)}">${escH(s.name)}</option>`).join('');
-    document.getElementById('regNameHint').textContent = "Don't see your name? Contact HR — your account needs to be set up first.";
+    input.disabled = false;
+    input.placeholder = 'Start typing your name...';
+    document.getElementById('regNameHint').textContent = "Don't see your name? Contact HR: your account needs to be set up first.";
+    setupSearchableDropdown('regNameSearch', 'regNameSelect', 'regNameOptions', unclaimedStaffList, onStaffSelected);
   }catch(e){
-    sel.innerHTML = '<option value="">Could not load staff list</option>';
+    input.placeholder = 'Could not load staff list';
   }
+}
+
+/* ── Reusable typeahead combobox ──
+   inputId: visible text field the person types into
+   hiddenId: hidden field that only gets set once a real option is clicked
+             (this is what stops people submitting free text that doesn't
+             match an actual staff record)
+   optionsId: the dropdown list container
+   dataArray: array of {name, email, ...} staff records
+   onPick: optional callback fired with the selected email after a click */
+function setupSearchableDropdown(inputId, hiddenId, optionsId, dataArray, onPick){
+  const input  = document.getElementById(inputId);
+  const hidden = document.getElementById(hiddenId);
+  const box    = document.getElementById(optionsId);
+  const clearBtn = document.getElementById(inputId + 'Clear');
+
+  function toggleClearBtn(){
+    if(clearBtn) clearBtn.style.display = input.value ? 'block' : 'none';
+  }
+
+  function render(filter){
+    box.innerHTML = '';
+    const f = (filter||'').trim().toLowerCase();
+    if(!f){ box.style.display='none'; return; }
+
+    const matches = dataArray.filter(s => (s.name||'').toLowerCase().includes(f)).slice(0, 8);
+    if(!matches.length){
+      box.innerHTML = '<div class="dropdown-empty">No matching name found</div>';
+      box.style.display = 'block';
+      return;
+    }
+    matches.forEach(s=>{
+      const opt = document.createElement('div');
+      opt.className = 'dropdown-option';
+      opt.textContent = s.name;
+      opt.onclick = ()=>{
+        input.value = s.name;
+        hidden.value = s.email;
+        box.style.display = 'none';
+        toggleClearBtn();
+        if(onPick) onPick();
+      };
+      box.appendChild(opt);
+    });
+    box.style.display = 'block';
+  }
+
+  // input: fires on every keystroke -- including backspace/delete -- so the
+  // dropdown always reflects exactly what's currently typed. Clearing the
+  // hidden field here means a name only "counts" once someone clicks a real
+  // option below, not just because the text happens to match.
+  input.addEventListener('input', ()=>{ hidden.value=''; toggleClearBtn(); if(onPick) onPick(); render(input.value); });
+  input.addEventListener('focus', ()=> render(input.value));
+  // Enter shouldn't do anything unexpected (there's no form to submit here,
+  // but some mobile keyboards treat Enter as "confirm suggestion") --
+  // swallow it so it can't interfere with normal typing/backspacing.
+  input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') e.preventDefault(); });
+  document.addEventListener('click', (e)=>{
+    if(!input.contains(e.target) && !box.contains(e.target)) box.style.display='none';
+  });
+  toggleClearBtn();
+}
+
+/* Lets someone wipe a wrongly-picked or auto-filled name in one tap,
+   instead of having to hold backspace. */
+function clearSearchable(inputId, hiddenId, optionsId){
+  document.getElementById(inputId).value = '';
+  document.getElementById(hiddenId).value = '';
+  document.getElementById(optionsId).style.display = 'none';
+  const clearBtn = document.getElementById(inputId + 'Clear');
+  if(clearBtn) clearBtn.style.display = 'none';
+  document.getElementById(inputId).focus();
+  if(inputId === 'regNameSearch') onStaffSelected();
 }
 
 function onStaffSelected(){
@@ -334,10 +593,22 @@ async function handleLogin(){
     const data = await res.json();
 
     if(data.success){
-      /* Store session in sessionStorage (cleared when tab closes) */
-      sessionStorage.setItem('seriti_user', JSON.stringify(data.user));
-      /* Route by role */
-      if(data.user.role==='hr')       window.location.href='hr.html';
+      /* Store session in BOTH sessionStorage (this tab) and localStorage
+         (survives across tabs/browser restarts, within SESSION_TTL_MS) --
+         the hash is included so dashboard/manager/hr pages can prove who's
+         asking when they request data, not just state who they are. */
+      const userWithHash = Object.assign({}, data.user, { hash, savedAt: Date.now() });
+      sessionStorage.setItem('seriti_user', JSON.stringify(userWithHash));
+      localStorage.setItem('seriti_user', JSON.stringify(userWithHash));
+      /* Route by role -- but honor a specific page the person was
+         actually trying to reach (e.g. clicked a manager-approval link
+         from an email) over the generic role-based default, so signing
+         in doesn't silently strand them somewhere they didn't ask for. */
+      const returnTo = sessionStorage.getItem('seriti_return_to');
+      if(returnTo){
+        sessionStorage.removeItem('seriti_return_to');
+        window.location.href = returnTo;
+      } else if(data.user.role==='hr')       window.location.href='hr.html';
       else if(data.user.role==='manager') window.location.href='manager.html';
       else window.location.href='dashboard.html';
     } else if(data.requiresVerification){

@@ -69,6 +69,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
 .badge.pending{background:var(--amber-pale); color:var(--amber);}
 .badge.approved{background:var(--green-pale); color:var(--green);}
 .badge.declined{background:var(--red-pale); color:var(--red);}
+.badge.cancelled{background:var(--line); color:var(--slate-soft);}
 .empty{text-align:center; padding:30px; color:var(--slate-soft); font-size:13.5px;}
 
 /* APPLY MODAL */
@@ -166,7 +167,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
 <div class="overlay" id="overlay">
   <div class="modal">
     <div class="modal-head">
-      <h2>Apply for leave</h2>
+      <h2 id="modalTitle">Apply for leave</h2>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -259,9 +260,32 @@ let attachmentMimeType = "";
 const MAX_ATTACHMENT_MB = 5;
 
 /* ── Session check ── */
-const userStr = sessionStorage.getItem('seriti_user');
-if(!userStr){ sessionStorage.setItem('seriti_return_to','dashboard.html'); window.location.href='login.html'; }
-const user = JSON.parse(userStr);
+/* Same "recently logged in" window as login.html -- see that file for the
+   full explanation. sessionStorage alone doesn't survive a fresh tab, so
+   this falls back to localStorage when needed instead of forcing a
+   re-login every time. */
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+function loadSeritiSession(){
+  let raw = sessionStorage.getItem('seriti_user');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  raw = localStorage.getItem('seriti_user');
+  if(!raw) return null;
+  try{
+    const stored = JSON.parse(raw);
+    if(!stored.savedAt || (Date.now() - stored.savedAt) > SESSION_TTL_MS){
+      localStorage.removeItem('seriti_user');
+      return null;
+    }
+    stored.savedAt = Date.now();
+    sessionStorage.setItem('seriti_user', JSON.stringify(stored));
+    localStorage.setItem('seriti_user', JSON.stringify(stored));
+    return stored;
+  }catch(e){ return null; }
+}
+
+const user = loadSeritiSession();
+if(!user){ sessionStorage.setItem('seriti_return_to','dashboard.html'); window.location.href='login.html'; }
 
 document.getElementById('navName').textContent = user.name;
 document.getElementById('welcomeText').textContent = `Welcome back, ${user.name.split(' ')[0]}.`;
@@ -539,14 +563,16 @@ function renderBalances(balances){
   }).join('');
 }
 
+let lastApps = [];
 function renderApplications(apps){
+  lastApps = apps || [];
   const container = document.getElementById('appsContainer');
   if(!apps||!apps.length){
     container.innerHTML='<div class="empty">No leave applications yet. Click "Apply for leave" to get started.</div>';
     return;
   }
   container.innerHTML=`<table>
-    <thead><tr><th>Leave type</th><th>Start date</th><th>End date</th><th>Days</th><th>Status</th><th>Manager note</th></tr></thead>
+    <thead><tr><th>Leave type</th><th>Start date</th><th>End date</th><th>Days</th><th>Status</th><th>Manager note</th><th>Actions</th></tr></thead>
     <tbody>${apps.map(a=>`<tr>
       <td>${escH(a.leaveType)}</td>
       <td>${formatDate(a.startDate)}</td>
@@ -554,8 +580,26 @@ function renderApplications(apps){
       <td>${a.workingDays}</td>
       <td><span class="badge ${(a.status||'pending').toLowerCase()}">${a.status||'Pending'}</span></td>
       <td style="color:var(--slate-soft); font-size:12.5px;">${escH(a.managerNote||'-')}</td>
+      <td style="white-space:nowrap;">${renderAppActions(a)}</td>
     </tr>`).join('')}</tbody>
   </table>`;
+}
+
+/* Edit is only offered while a manager hasn't decided yet (see
+   handleEditApplication server-side -- once decided, edits are blocked
+   there too, so this just matches what the backend will actually allow).
+   Cancel is offered for Pending (nothing to reverse) and Approved (backend
+   restores the balance automatically) -- not for Declined/Cancelled. */
+function renderAppActions(a){
+  const status = a.status || 'Pending';
+  let btns = '';
+  if(status === 'Pending'){
+    btns += `<button class="btn-secondary" style="padding:5px 10px; font-size:12px; margin-right:6px;" onclick="openEditModal('${a.appId}')">Edit</button>`;
+  }
+  if(status === 'Pending' || status === 'Approved'){
+    btns += `<button class="btn-secondary" style="padding:5px 10px; font-size:12px; color:var(--red); border-color:var(--red);" onclick="cancelApplication('${a.appId}')">Cancel</button>`;
+  }
+  return btns || '-';
 }
 
 function formatDate(d){
@@ -576,6 +620,9 @@ function formatDate(d){
 function escH(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
 /* ── Modal ── */
+let editingAppId = null;
+let editingHasExistingAttachment = false;
+
 function openModal(){ document.getElementById('overlay').classList.add('show'); }
 function closeModal(){
   document.getElementById('overlay').classList.remove('show');
@@ -604,6 +651,61 @@ function closeModal(){
   document.getElementById('submitLeaveBtn').disabled = false;
   attachmentRequired = false;
   attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
+  editingAppId = null;
+  editingHasExistingAttachment = false;
+  document.getElementById('modalTitle').textContent = 'Apply for leave';
+  document.getElementById('submitLeaveBtn').textContent = 'Submit application';
+}
+
+/* Pre-fill the same modal used for new applications with an existing
+   Pending application's details, and switch submitLeave() into edit mode. */
+function openEditModal(appId){
+  const app = lastApps.find(a => a.appId === appId);
+  if(!app) return;
+
+  editingAppId = appId;
+  editingHasExistingAttachment = !!app.attachmentUrl;
+
+  document.getElementById('modalTitle').textContent = 'Edit application';
+  document.getElementById('submitLeaveBtn').textContent = 'Save changes';
+
+  document.getElementById('leaveType').value = app.leaveType || '';
+  document.getElementById('startDate').value = app.startDate || '';
+  document.getElementById('endDate').value = app.endDate || '';
+  document.getElementById('workingDays').value = app.workingDays || '';
+  document.getElementById('reason').value = app.reason || '';
+  document.getElementById('coverSearch').value = app.coverPerson || '';
+  document.getElementById('contactPhone').value = app.contactPhone || '';
+
+  onLeaveTypeChange();
+  openModal();
+}
+
+/* Withdraw an application. Pending -> nothing to reverse. Approved ->
+   the server restores the deducted balance automatically. */
+async function cancelApplication(appId){
+  const app = lastApps.find(a => a.appId === appId);
+  if(!app) return;
+  const wasApproved = app.status === 'Approved';
+  const confirmMsg = wasApproved
+    ? `Cancel this already-approved ${app.leaveType} leave? Your ${app.workingDays} day(s) will be credited back to your balance.`
+    : `Cancel this pending ${app.leaveType} leave application?`;
+  if(!confirm(confirmMsg)) return;
+
+  try{
+    const res  = await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({
+      action:'cancelApplication', appId, email:user.email, hash:user.hash
+    })});
+    const data = await res.json().catch(()=>null);
+
+    if(data && data.success){
+      loadDashboard();
+    } else {
+      alert((data && data.message) || 'Could not cancel this application. Please try again.');
+    }
+  }catch(e){
+    alert('Something went wrong. Please try again.');
+  }
 }
 
 function showMsg(type,text){
@@ -611,7 +713,7 @@ function showMsg(type,text){
   el.className=`msg ${type}`; el.textContent=text;
 }
 
-/* ── Submit leave ── */
+/* ── Submit leave (handles both new applications and edits) ── */
 async function submitLeave(){
   const type  = document.getElementById('leaveType').value;
   const start = document.getElementById('startDate').value;
@@ -620,7 +722,10 @@ async function submitLeave(){
   const reason= document.getElementById('reason').value.trim();
   const coverEmail = document.getElementById('cover').value;
   const coverStaff = allStaffList.find(s => s.email === coverEmail);
-  const coverName  = coverStaff ? coverStaff.name : '';
+  // When editing and the cover-person field wasn't touched, there's no
+  // matching email selection -- fall back to whatever name is showing
+  // (the original cover person) rather than silently blanking it out.
+  const coverName  = coverStaff ? coverStaff.name : (editingAppId ? document.getElementById('coverSearch').value.trim() : '');
   const phone = document.getElementById('contactPhone').value.trim();
   const emergencyOverride = document.getElementById('emergencyOverride').checked;
 
@@ -628,17 +733,43 @@ async function submitLeave(){
   if(!start) return showMsg('err','Please select a start date.');
   if(!end)   return showMsg('err','Please select an end date.');
   if(!days||days<=0) return showMsg('err','Please enter the number of working days.');
-  if(attachmentRequired && !attachmentBase64) return showMsg('err',`A supporting document is required for ${type} leave.`);
+  if(attachmentRequired && !attachmentBase64 && !editingHasExistingAttachment) return showMsg('err',`A supporting document is required for ${type} leave.`);
   if(type === 'Annual' && emergencyOverride && reason.length < 10){
     return showMsg('err','Please explain the emergency in the Reason field (at least a sentence) so your manager understands the late notice.');
   }
   if(type === 'Annual' && annualNoticeBlocking) return showMsg('err','This annual leave request does not meet the advance-notice policy. Please adjust your start date, or tick the emergency box and explain why.');
 
   const btn=document.getElementById('submitLeaveBtn');
-  btn.disabled=true; btn.textContent='Submitting…';
+  btn.disabled=true; btn.textContent = editingAppId ? 'Saving…' : 'Submitting…';
+
+  if(editingAppId){
+    const editPayload = {
+      action:'editApplication', appId: editingAppId, email:user.email, hash:user.hash,
+      annualNoticeEmergencyOverride: (type === 'Annual' && emergencyOverride),
+      leaveType:type, startDate:start, endDate:end, workingDays:days,
+      reason, coverPerson:coverName, contactPhone:phone,
+      attachmentBase64, attachmentName, attachmentMimeType
+    };
+    try{
+      const res  = await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(editPayload)});
+      const data = await res.json().catch(()=>null);
+
+      if(data && data.success){
+        showMsg('ok','Application updated.');
+        setTimeout(()=>{ closeModal(); loadDashboard(); },1200);
+      } else {
+        showMsg('err', (data && data.message) || 'Could not save your changes. Please try again.');
+      }
+    }catch(e){
+      showMsg('err','Something went wrong. Please try again.');
+    }finally{
+      btn.disabled=false; btn.textContent = 'Save changes';
+    }
+    return;
+  }
 
   const payload={
-    action:'apply',
+    action:'apply', hash:user.hash,
     annualNoticeEmergencyOverride: (type === 'Annual' && emergencyOverride),
     email:user.email, name:user.name, department:user.dept,
     managerEmail:user.managerEmail,
@@ -678,6 +809,7 @@ async function submitLeave(){
 
 function signOut(){
   sessionStorage.removeItem('seriti_user');
+  localStorage.removeItem('seriti_user');
   window.location.href='login.html';
 }
 
