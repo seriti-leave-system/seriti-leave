@@ -325,6 +325,13 @@ function parseLocalDate(dateStr){
   return new Date(y, m - 1, d);
 }
 
+function toYMD(date){
+  const y = date.getFullYear();
+  const m = String(date.getMonth()+1).padStart(2,'0');
+  const d = String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+
 function calcDays(){
   const halfDayChecked = document.getElementById('halfDay').checked;
   const s = document.getElementById('startDate').value;
@@ -344,7 +351,12 @@ function calcDays(){
   const start=parseLocalDate(s), end=parseLocalDate(e);
   if(end<start) return;
   let days=0, cur=new Date(start);
-  while(cur<=end){ if(cur.getDay()!==0&&cur.getDay()!==6) days++; cur.setDate(cur.getDate()+1); }
+  while(cur<=end){
+    const isWeekend = cur.getDay()===0 || cur.getDay()===6;
+    const isHoliday = publicHolidays.has(toYMD(cur));
+    if(!isWeekend && !isHoliday) days++;
+    cur.setDate(cur.getDate()+1);
+  }
   document.getElementById('workingDays').value=days;
   updateAttachmentRequirement();
   checkAnnualNotice();
@@ -530,6 +542,13 @@ function onAttachmentChange(){
   reader.readAsDataURL(file);
 }
 
+/* Populated from the backend on load (see loadDashboard below) -- the
+   set of public holiday dates, as "YYYY-MM-DD" strings, that calcDays()
+   excludes from the working-day count alongside weekends. Maintained by
+   HR on the "Public Holidays" sheet tab, not hardcoded here, so it stays
+   correct year over year without a code change. */
+let publicHolidays = new Set();
+
 /* ── Load data ── */
 async function loadDashboard(){
   if(SCRIPT_URL.includes('PASTE_YOUR')){
@@ -541,6 +560,8 @@ async function loadDashboard(){
     const data = await res.json();
     renderBalances(data.balances);
     renderApplications(data.applications);
+    publicHolidays = new Set(data.publicHolidays || []);
+    calcDays(); // in case dates were already picked before this loaded
   }catch(e){
     document.getElementById('balanceGrid').innerHTML='<div style="color:#C0392B; font-size:13px;">Could not load data. Please refresh.</div>';
   }

@@ -100,6 +100,9 @@ tr:nth-child(even) td{background:#FAFCFA;}
       <option value="Approved">Approved</option>
       <option value="Declined">Declined</option>
     </select>
+    <select class="filter-sel" id="monthFilter" onchange="filterTable()">
+      <option value="">All months</option>
+    </select>
     <input class="search-box" id="deptFilter" placeholder="Filter by department..." style="max-width:220px;" oninput="filterTable()">
     <button class="export-btn" onclick="exportCSV()">Export CSV</button>
   </div>
@@ -184,21 +187,53 @@ async function loadAll(){
 
     filterTable();
     renderBalances();
+    populateMonthFilter();
   }catch(e){
     document.getElementById('appsContainer').innerHTML='<div class="empty">Could not load data. Please refresh.</div>';
   }
+}
+
+/* Builds the month dropdown with every month of the current year (plus any
+   other year that shows up in the data, e.g. leave already booked into next
+   year) -- all 12 months are always selectable, even ones nobody has
+   applied for leave in yet, so Nobuhle can check ahead (e.g. pick October
+   in August and see it's simply empty so far, rather than October not
+   being an option at all until someone applies for it). Filters on the
+   leave dates themselves (i.e. "who is on leave in September"), not the
+   date the application was submitted -- flag to Nobuhle if she actually
+   meant submission date instead, that's a one-line change. */
+function populateMonthFilter(){
+  const sel = document.getElementById('monthFilter');
+  const years = new Set([new Date().getFullYear()]);
+  allApps.forEach(a=>{
+    if(!a.startDate) return;
+    const y = (a.startDate.match(/^\d{4}/) || [])[0];
+    if(y) years.add(parseInt(y,10));
+  });
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  [...years].sort().forEach(y=>{
+    monthNames.forEach((name,i)=>{
+      const mm = String(i+1).padStart(2,'0');
+      const opt = document.createElement('option');
+      opt.value = `${y}-${mm}`;
+      opt.textContent = `${name} ${y}`;
+      sel.appendChild(opt);
+    });
+  });
 }
 
 function filterTable(){
   const search = document.getElementById('searchBox').value.toLowerCase();
   const status = document.getElementById('statusFilter').value;
   const dept   = document.getElementById('deptFilter').value;
+  const month  = document.getElementById('monthFilter').value;
 
   const filtered = allApps.filter(a=>{
     const matchSearch = !search || [a.name,a.department,a.leaveType,a.status].some(f=>(f||'').toLowerCase().includes(search));
     const matchStatus = !status || a.status===status;
     const matchDept   = !dept   || (a.department || "").toLowerCase().includes(dept.toLowerCase());
-    return matchSearch && matchStatus && matchDept;
+    const matchMonth  = !month || (a.startDate || "").startsWith(month);
+    return matchSearch && matchStatus && matchDept && matchMonth;
   });
 
   const container=document.getElementById('appsContainer');

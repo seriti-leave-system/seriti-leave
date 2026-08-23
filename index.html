@@ -59,6 +59,17 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
 }
 .field .hint{font-size:11.5px; color:var(--slate-soft); margin-top:5px;}
 
+.pw-wrap{position:relative;}
+.pw-wrap input{padding-right:42px !important;}
+.pw-toggle-btn{
+  position:absolute; right:4px; top:50%; transform:translateY(-50%);
+  width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+  background:none; border:none; cursor:pointer; padding:0; border-radius:7px;
+  color:var(--slate-soft);
+}
+.pw-toggle-btn:hover{background:rgba(0,0,0,0.05); color:var(--slate);}
+.pw-toggle-btn svg{width:19px; height:19px;}
+
 .searchable-select{position:relative;}
 .searchable-select input[type="text"]{padding-right:34px;}
 .clear-btn{
@@ -118,7 +129,12 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </div>
         <div class="field">
           <label for="loginPassword">Password</label>
-          <input type="password" id="loginPassword" placeholder="Enter your password">
+          <div class="pw-wrap">
+            <input type="password" id="loginPassword" placeholder="Enter your password">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('loginPassword', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <button class="btn" onclick="handleLogin()">Sign in</button>
         <div class="msg" id="loginMsg"></div>
@@ -156,11 +172,21 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </div>
         <div class="field">
           <label for="regPassword">Create a password</label>
-          <input type="password" id="regPassword" placeholder="At least 8 characters">
+          <div class="pw-wrap">
+            <input type="password" id="regPassword" placeholder="At least 8 characters">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('regPassword', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <div class="field">
           <label for="regConfirm">Confirm password</label>
-          <input type="password" id="regConfirm" placeholder="Re-enter your password">
+          <div class="pw-wrap">
+            <input type="password" id="regConfirm" placeholder="Re-enter your password">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('regConfirm', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <button class="btn" onclick="handleRegister()">Create account</button>
         <div class="msg" id="registerMsg"></div>
@@ -211,11 +237,21 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
         </div>
         <div class="field">
           <label for="resetPassword">New password</label>
-          <input type="password" id="resetPassword" placeholder="At least 8 characters">
+          <div class="pw-wrap">
+            <input type="password" id="resetPassword" placeholder="At least 8 characters">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('resetPassword', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <div class="field">
           <label for="resetConfirm">Confirm new password</label>
-          <input type="password" id="resetConfirm" placeholder="Re-enter your new password">
+          <div class="pw-wrap">
+            <input type="password" id="resetConfirm" placeholder="Re-enter your new password">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('resetConfirm', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <button class="btn" onclick="handleResetPassword()">Reset password</button>
         <div class="msg" id="resetMsg"></div>
@@ -232,6 +268,19 @@ footer{text-align:center; font-size:12px; color:var(--slate-soft); padding:20px;
 <footer>Seriti Institute NPC - Leave Management System - Confidential</footer>
 
 <script>
+// Toggles a password field between hidden (dots) and visible (plain text),
+// and swaps the eye icon to an eye-with-slash so it's clear what will
+// happen if clicked again. Purely a display convenience for the person
+// typing -- doesn't touch what actually gets sent/hashed on submit.
+function togglePwVisibility(inputId, btn){
+  const input = document.getElementById(inputId);
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  btn.innerHTML = showing
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.06 21.06 0 0 1 5.06-6.06M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.06 21.06 0 0 1-3.22 4.36M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+}
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9hzr_FHyzN-SXSmOhG7aBUIF84PpOX44yhBn_dC9QSwCAqjKzHRDyGkLtZAh2XgX5Zg/exec";
 
 /* "Recently logged in" window -- how long a login stays valid across tabs/
