@@ -197,7 +197,7 @@ function renderApps(){
         <div class="detail"><div class="dlabel">Working days</div>${a.workingDays}</div>
         <div class="detail"><div class="dlabel">Cover person</div>${escH(a.coverPerson||'-')}</div>
         <div class="detail"><div class="dlabel">Contact during leave</div>${escH(a.contactPhone||'-')}</div>
-        ${a.attachmentUrl?`<div class="detail"><div class="dlabel">Supporting document</div><a href="${escH(a.attachmentUrl)}" target="_blank" rel="noopener" style="color:var(--brand); font-weight:600;">View attachment</a></div>`:''}
+        ${a.attachmentUrl?`<div class="detail"><div class="dlabel">Supporting document</div><a href="${SCRIPT_URL}?action=viewAttachment&appId=${encodeURIComponent(a.appId)}&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}" target="_blank" rel="noopener" style="color:var(--brand); font-weight:600;">View attachment</a></div>`:''}
         ${a.reason?`<div class="detail" style="grid-column:1/-1;"><div class="dlabel">Reason</div>${escH(a.reason)}</div>`:''}
       </div>
       <div class="app-actions">

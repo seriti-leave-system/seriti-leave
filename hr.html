@@ -153,6 +153,9 @@ let allApps=[], allStaff=[];
 
 function escH(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 function formatDate(d){
+  if(!d) return '-'; // Many staff simply don't have a StartDate on record --
+                      // show a clean placeholder instead of letting new
+                      // Date("") produce a literal "Invalid Date" string.
   try{
     let date;
     if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
@@ -204,6 +207,11 @@ async function loadAll(){
    meant submission date instead, that's a one-line change. */
 function populateMonthFilter(){
   const sel = document.getElementById('monthFilter');
+  // Guard against duplicate entries if this is ever called more than once
+  // (e.g. a future "refresh" button that re-runs loadAll()) -- clear
+  // everything except the default "All months" option first.
+  while(sel.options.length > 1) sel.remove(1);
+
   const years = new Set([new Date().getFullYear()]);
   allApps.forEach(a=>{
     if(!a.startDate) return;
@@ -211,7 +219,10 @@ function populateMonthFilter(){
     if(y) years.add(parseInt(y,10));
   });
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  [...years].sort().forEach(y=>{
+  // Explicit numeric compare -- Array.sort() defaults to lexicographic
+  // (string) ordering, which happens to work for same-length 4-digit years
+  // but is the wrong tool for the job and worth being explicit about.
+  [...years].sort((a,b)=>a-b).forEach(y=>{
     monthNames.forEach((name,i)=>{
       const mm = String(i+1).padStart(2,'0');
       const opt = document.createElement('option');
@@ -257,7 +268,7 @@ function filterTable(){
       <td>${a.workingDays}</td>
       <td><span class="badge ${(a.status||'pending').toLowerCase()}">${a.status||'Pending'}</span></td>
       <td style="color:var(--slate-soft); font-size:12px;">${escH(a.managerNote||'-')}</td>
-      <td>${a.attachmentUrl?`<a href="${escH(a.attachmentUrl)}" target="_blank" rel="noopener" style="color:var(--brand); font-weight:600; font-size:12px;">View</a>`:'<span style="color:var(--slate-soft); font-size:12px;">-</span>'}</td>
+      <td>${a.attachmentUrl?`<a href="${SCRIPT_URL}?action=viewAttachment&appId=${encodeURIComponent(a.appId)}&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}" target="_blank" rel="noopener" style="color:var(--brand); font-weight:600; font-size:12px;">View</a>`:'<span style="color:var(--slate-soft); font-size:12px;">-</span>'}</td>
       <td style="color:var(--slate-soft); font-size:12px;">${formatDate(a.timestamp)}</td>
     </tr>`).join('')}</tbody>
   </table>`;
