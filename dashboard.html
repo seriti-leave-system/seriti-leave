@@ -610,20 +610,26 @@ function renderApplications(apps){
    handleEditApplication server-side -- once decided, edits are blocked
    there too, so this just matches what the backend will actually allow).
    Cancel is offered for Pending (nothing to reverse) and Approved (backend
-   restores the balance automatically) -- not for Declined/Cancelled. */
+   restores the balance automatically) -- not for Declined/Cancelled. Also
+   not once the leave's own start date has passed: the backend now blocks
+   this outright (can't un-take leave you've already gone on), so hiding
+   the button here just avoids showing something that's guaranteed to
+   fail with an error if clicked. */
 function renderAppActions(a){
   const status = a.status || 'Pending';
   let btns = '';
   if(status === 'Pending'){
     btns += `<button class="btn-secondary" style="padding:5px 10px; font-size:12px; margin-right:6px;" onclick="openEditModal('${a.appId}')">Edit</button>`;
   }
-  if(status === 'Pending' || status === 'Approved'){
+  const alreadyStarted = a.startDate && parseLocalDate(a.startDate) <= new Date(new Date().setHours(0,0,0,0));
+  if((status === 'Pending' || status === 'Approved') && !alreadyStarted){
     btns += `<button class="btn-secondary" style="padding:5px 10px; font-size:12px; color:var(--red); border-color:var(--red);" onclick="cancelApplication('${a.appId}')">Cancel</button>`;
   }
   return btns || '-';
 }
 
 function formatDate(d){
+  if(!d) return '-';
   try{
     let date;
     if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
@@ -810,16 +816,40 @@ async function submitLeave(){
       return;
     }
 
-    /* Double-check it actually saved, in case the response was ambiguous for any reason */
-    const verifyRes  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
-    const verifyData = await verifyRes.json();
-    const saved = (verifyData.applications||[]).some(a=>a.appId===payload.appId);
-
-    if(saved){
+    // A clear "success: true" from the server is a direct, trustworthy
+    // signal on its own -- no need to risk a second network request just
+    // to double-check something we already know worked. Previously this
+    // ran unconditionally, and if that second check request itself had
+    // any hiccup (slow connection, brief network blip -- nothing to do
+    // with the real submission), it would throw and land in the catch
+    // block below, wrongly telling the person their submission failed
+    // when it had actually gone through fine.
+    if(data && data.success === true){
       showMsg('ok','Application submitted. Your manager will be notified by email.');
       setTimeout(()=>{ closeModal(); loadDashboard(); },1800);
-    } else {
-      showMsg('err','Something went wrong saving your application. Please try again.');
+      return;
+    }
+
+    /* Only reach here if the first response was genuinely ambiguous
+       (e.g. couldn't be parsed as JSON at all) -- in that case, and only
+       that case, double-check by asking the server directly. */
+    try{
+      const verifyRes  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
+      const verifyData = await verifyRes.json().catch(()=>null);
+      const saved = verifyData && (verifyData.applications||[]).some(a=>a.appId===payload.appId);
+
+      if(saved){
+        showMsg('ok','Application submitted. Your manager will be notified by email.');
+        setTimeout(()=>{ closeModal(); loadDashboard(); },1800);
+      } else {
+        showMsg('err','Something went wrong saving your application. Please try again.');
+      }
+    }catch(verifyErr){
+      // The check itself failed -- we genuinely don't know if the
+      // submission went through or not, so say that honestly rather
+      // than implying it definitely failed (which would invite a
+      // needless duplicate submission if it actually succeeded).
+      showMsg('err','We couldn\'t confirm whether your application saved. Please check "My leave applications" below before submitting again.');
     }
   }catch(e){
     showMsg('err','Something went wrong. Please try again.');
