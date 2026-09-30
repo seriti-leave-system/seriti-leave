@@ -518,6 +518,14 @@ function onAttachmentChange(){
     return;
   }
 
+  if(!/\.(pdf|jpe?g|png)$/i.test(file.name)){
+    errEl.textContent = 'That file type is not supported. Please attach a PDF, JPG or PNG (save or photograph the document as a PDF or picture and try again).';
+    errEl.style.display = 'block';
+    input.value = '';
+    attachmentBase64 = ""; attachmentName = ""; attachmentMimeType = "";
+    return;
+  }
+
   if(file.size > MAX_ATTACHMENT_MB * 1024 * 1024){
     errEl.textContent = `File is too large. Please keep it under ${MAX_ATTACHMENT_MB}MB.`;
     errEl.style.display = 'block';
