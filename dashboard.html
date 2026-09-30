@@ -561,6 +561,18 @@ async function loadDashboard(){
     renderBalances(data.balances);
     renderApplications(data.applications);
     publicHolidays = new Set(data.publicHolidays || []);
+    const staffForCover = (data.staff || []).filter(s => s.email !== user.email); // exclude yourself
+    if(!coverDropdownReady){
+      // First load only: wire the dropdown up once. loadDashboard() runs again
+      // after every submit/edit/cancel, and re-running setup each time would
+      // stack duplicate event listeners on the same input.
+      allStaffList = staffForCover;
+      setupSearchableDropdown('coverSearch', 'cover', 'coverOptions', allStaffList);
+      coverDropdownReady = true;
+    } else {
+      // Later loads: refresh the SAME array the dropdown is already using.
+      allStaffList.splice(0, allStaffList.length, ...staffForCover);
+    }
     calcDays(); // in case dates were already picked before this loaded
   }catch(e){
     document.getElementById('balanceGrid').innerHTML='<div style="color:#C0392B; font-size:13px;">Could not load data. Please refresh.</div>';
@@ -864,20 +876,11 @@ function signOut(){
   window.location.href='login.html';
 }
 
+// Filled from the dashboard response (see loadDashboard) -- this used to be
+// its own ?action=allStaff request on every page load, a second full read
+// of the Staff sheet racing the main call.
 let allStaffList = [];
-async function loadAllStaffForCoverDropdown(){
-  const input = document.getElementById('coverSearch');
-  if(SCRIPT_URL.includes('PASTE_YOUR')) return;
-  try{
-    const res  = await fetch(`${SCRIPT_URL}?action=allStaff`);
-    const data = await res.json();
-    allStaffList = (data.staff || []).filter(s => s.email !== user.email); // exclude yourself
-
-    setupSearchableDropdown('coverSearch', 'cover', 'coverOptions', allStaffList);
-  }catch(e){
-    input.placeholder = 'Could not load staff list';
-  }
-}
+let coverDropdownReady = false;
 function escAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
 
 /* ── Reusable typeahead combobox ──
@@ -950,7 +953,6 @@ function clearSearchable(inputId, hiddenId, optionsId){
 }
 
 loadDashboard();
-loadAllStaffForCoverDropdown();
 </script>
 </body>
 </html>
