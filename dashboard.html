@@ -558,32 +558,96 @@ function onAttachmentChange(){
 let publicHolidays = new Set();
 
 /* ── Load data ── */
+/* The dashboard keeps a copy of the last successful load in this browser, so
+   the page can show something straight away while the fresh data is fetched,
+   and can still show something if Google is slow or a request fails. It is
+   removed on sign-out. */
+function dashCacheKey(){ return 'seriti_dash_' + (user && user.email ? user.email : ''); }
+function readDashCache(){
+  try{ const c = JSON.parse(localStorage.getItem(dashCacheKey()) || 'null'); return c && c.data ? c.data : null; }
+  catch(e){ return null; }
+}
+function writeDashCache(data){
+  try{ localStorage.setItem(dashCacheKey(), JSON.stringify({ savedAt: Date.now(), data })); }catch(e){}
+}
+
+/* One request, with a timeout and one automatic retry -- the first request
+   after a quiet spell can fail or stall while Google wakes the script up. */
+async function fetchDashboardData(){
+  const url = `${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`;
+  let lastErr;
+  for(let attempt = 0; attempt < 2; attempt++){
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
+    try{
+      const res  = await fetch(url, { signal: ctrl.signal });
+      const data = await res.json();
+      clearTimeout(timer);
+      if(data && data.error) throw new Error(data.error);
+      return data;
+    }catch(e){
+      clearTimeout(timer);
+      lastErr = e;
+      if(e && e.message === 'Access denied.') break; // retrying won't help
+      if(attempt === 0) await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+  throw lastErr;
+}
+
+let dashRenderedOnce = false;
+function applyDashboardData(data){
+  renderBalances(data.balances);
+  renderApplications(data.applications);
+  publicHolidays = new Set(data.publicHolidays || []);
+  const staffForCover = (data.staff || []).filter(s => s.email !== user.email); // exclude yourself
+  if(!coverDropdownReady){
+    // First load only: wire the dropdown up once. loadDashboard() runs again
+    // after every submit/edit/cancel, and re-running setup each time would
+    // stack duplicate event listeners on the same input.
+    allStaffList = staffForCover;
+    setupSearchableDropdown('coverSearch', 'cover', 'coverOptions', allStaffList);
+    coverDropdownReady = true;
+  } else {
+    // Later loads: refresh the SAME array the dropdown is already using.
+    allStaffList.splice(0, allStaffList.length, ...staffForCover);
+  }
+  calcDays(); // in case dates were already picked before this loaded
+}
+
 async function loadDashboard(){
   if(SCRIPT_URL.includes('PASTE_YOUR')){
     document.getElementById('balanceGrid').innerHTML='<div style="color:#C0392B; font-size:13px;">Setup needed: add your Apps Script URL to SCRIPT_URL in the code.</div>';
     return;
   }
-  try{
-    const res  = await fetch(`${SCRIPT_URL}?action=dashboard&email=${encodeURIComponent(user.email)}&hash=${encodeURIComponent(user.hash)}`);
-    const data = await res.json();
-    renderBalances(data.balances);
-    renderApplications(data.applications);
-    publicHolidays = new Set(data.publicHolidays || []);
-    const staffForCover = (data.staff || []).filter(s => s.email !== user.email); // exclude yourself
-    if(!coverDropdownReady){
-      // First load only: wire the dropdown up once. loadDashboard() runs again
-      // after every submit/edit/cancel, and re-running setup each time would
-      // stack duplicate event listeners on the same input.
-      allStaffList = staffForCover;
-      setupSearchableDropdown('coverSearch', 'cover', 'coverOptions', allStaffList);
-      coverDropdownReady = true;
-    } else {
-      // Later loads: refresh the SAME array the dropdown is already using.
-      allStaffList.splice(0, allStaffList.length, ...staffForCover);
+
+  // First load on this page: show the last saved copy straight away, if there is one.
+  let showedCache = false;
+  if(!dashRenderedOnce){
+    const cached = readDashCache();
+    if(cached){
+      try{ applyDashboardData(cached); showedCache = true; }catch(e){ showedCache = false; }
     }
-    calcDays(); // in case dates were already picked before this loaded
+  }
+
+  try{
+    const data = await fetchDashboardData();
+    applyDashboardData(data);
+    writeDashCache(data);
+    dashRenderedOnce = true;
   }catch(e){
-    document.getElementById('balanceGrid').innerHTML='<div style="color:#C0392B; font-size:13px;">Could not load data. Please refresh.</div>';
+    console.error('Dashboard load failed:', e);
+    if(showedCache){
+      dashRenderedOnce = true;
+      return; // the saved copy is already on screen; a later reload will refresh it
+    }
+    const reason = (e && e.message) ? e.message : 'unknown';
+    document.getElementById('balanceGrid').innerHTML =
+      '<div style="color:#C0392B; font-size:13px;">Could not load data. ' +
+      '<a href="#" onclick="loadDashboard(); return false;" style="color:#C0392B; text-decoration:underline;">Try again</a>' +
+      '<div style="font-size:11px; color:#999; margin-top:4px;">Reason: ' + escH(reason) + '</div></div>';
+    const ac = document.getElementById('appsContainer');
+    if(ac && /Loading applications/.test(ac.textContent)) ac.innerHTML = '<div class="empty">Could not load your applications.</div>';
   }
 }
 
@@ -879,6 +943,7 @@ async function submitLeave(){
 }
 
 function signOut(){
+  try{ localStorage.removeItem(dashCacheKey()); }catch(e){}
   sessionStorage.removeItem('seriti_user');
   localStorage.removeItem('seriti_user');
   window.location.href='login.html';
