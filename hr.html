@@ -75,6 +75,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
   <div class="nav-right">
     <span class="nav-name" id="navName"></span>
     <button class="nav-btn" onclick="window.location.href='dashboard.html'">My Leave</button>
+    <button class="nav-btn" id="overviewBtn" style="display:none" onclick="window.location.href='overview.html'">Overview</button>
     <button class="nav-btn" onclick="signOut()">Sign out</button>
   </div>
 </nav>
@@ -104,6 +105,11 @@ tr:nth-child(even) td{background:#FAFCFA;}
       <option value="">All months</option>
     </select>
     <input class="search-box" id="deptFilter" placeholder="Filter by department..." style="max-width:220px;" oninput="filterTable()">
+    <select class="filter-sel" id="typeFilter" onchange="filterTable()">
+      <option value="">All staff</option>
+      <option value="Regular">Regular employees</option>
+      <option value="Intern">Interns</option>
+    </select>
     <button class="export-btn" onclick="exportCSV()">Export CSV</button>
   </div>
   <div class="table-wrap">
@@ -148,6 +154,14 @@ function loadSeritiSession(){
 const user = loadSeritiSession();
 if(!user){ sessionStorage.setItem('seriti_return_to','hr.html'); window.location.href='login.html'; }
 document.getElementById('navName').textContent = user.name;
+/* Show the Overview button only to leadership, HR and the admin. The server
+   enforces this too, so this only decides who sees the button. */
+(function(){
+  var ok=['alwyn@seriti.org.za','nobuhle@seriti.org.za','refiloe@seriti.org.za'];
+  var b=document.getElementById('overviewBtn');
+  if(b && user && user.email && ok.indexOf(String(user.email).toLowerCase().trim())>-1) b.style.display='';
+})();
+
 
 let allApps=[], allStaff=[];
 
@@ -238,13 +252,15 @@ function filterTable(){
   const status = document.getElementById('statusFilter').value;
   const dept   = document.getElementById('deptFilter').value;
   const month  = document.getElementById('monthFilter').value;
+  const type   = document.getElementById('typeFilter').value;
 
   const filtered = allApps.filter(a=>{
     const matchSearch = !search || [a.name,a.department,a.leaveType,a.status].some(f=>(f||'').toLowerCase().includes(search));
     const matchStatus = !status || a.status===status;
     const matchDept   = !dept   || (a.department || "").toLowerCase().includes(dept.toLowerCase());
     const matchMonth  = !month || (a.startDate || "").startsWith(month);
-    return matchSearch && matchStatus && matchDept && matchMonth;
+    const matchType   = !type   || (a.employmentType || 'Regular') === type;
+    return matchSearch && matchStatus && matchDept && matchMonth && matchType;
   });
 
   const container=document.getElementById('appsContainer');
@@ -255,12 +271,13 @@ function filterTable(){
 
   container.innerHTML=`<table>
     <thead><tr>
-      <th>Employee</th><th>Department</th><th>Leave type</th>
+      <th>Employee</th><th>Type</th><th>Department</th><th>Leave type</th>
       <th>Start</th><th>End</th><th>Days</th>
       <th>Status</th><th>Manager decision</th><th>Document</th><th>Applied</th>
     </tr></thead>
     <tbody>${filtered.map(a=>`<tr>
       <td style="font-weight:500;">${escH(a.name)}</td>
+      <td>${escH(a.employmentType||'Regular')}</td>
       <td>${escH(a.department)}</td>
       <td>${escH(a.leaveType)}</td>
       <td>${formatDate(a.startDate)}</td>
@@ -282,12 +299,13 @@ function renderBalances(){
   }
   container.innerHTML=`<table>
     <thead><tr>
-      <th>Name</th><th>Department</th>
+      <th>Name</th><th>Type</th><th>Department</th>
       <th>Annual (rem)</th><th>Sick (rem)</th>
       <th>Family resp</th><th>Study</th><th>Start date</th>
     </tr></thead>
     <tbody>${allStaff.map(s=>`<tr>
       <td style="font-weight:500;">${escH(s.name)}</td>
+      <td>${escH(s.employmentType||'Regular')}</td>
       <td>${escH(s.department)}</td>
       <td>${s.annualRemaining??'-'} / ${s.annualTotal??'-'}</td>
       <td>${s.sickRemaining??'-'} / ${s.sickTotal??'-'}</td>
@@ -301,13 +319,17 @@ function renderBalances(){
 /* ── Export to CSV ── */
 function exportCSV(){
   if(!allApps.length) return alert('No data to export.');
-  const headers=['Name','Department','Leave Type','Start Date','End Date','Working Days','Status','Manager Note','Applied'];
-  const rows=allApps.map(a=>[a.name,a.department,a.leaveType,a.startDate,a.endDate,a.workingDays,a.status,a.managerNote||'',a.timestamp].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','));
+  const type = document.getElementById('typeFilter').value;
+  const list = type ? allApps.filter(a=>(a.employmentType||'Regular')===type) : allApps;
+  if(!list.length) return alert('No '+(type==='Intern'?'intern':'regular employee')+' applications to export.');
+  const headers=['Name','Employment Type','Department','Leave Type','Start Date','End Date','Working Days','Status','Manager Note','Applied'];
+  const rows=list.map(a=>[a.name,a.employmentType||'Regular',a.department,a.leaveType,a.startDate,a.endDate,a.workingDays,a.status,a.managerNote||'',a.timestamp].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','));
   const csv=[headers.join(','),...rows].join('\n');
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download=`Seriti_Leave_Applications_${new Date().toISOString().slice(0,10)}.csv`;
+  const tag = type==='Intern' ? 'Interns_' : type==='Regular' ? 'Regular_' : '';
+  a.href=url; a.download=`Seriti_Leave_Applications_${tag}${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
 

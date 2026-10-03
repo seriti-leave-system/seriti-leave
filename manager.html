@@ -78,6 +78,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
   <div class="nav-right">
     <span class="nav-name" id="navName"></span>
     <button class="nav-btn" onclick="window.location.href='dashboard.html'">My Leave</button>
+    <button class="nav-btn" id="overviewBtn" style="display:none" onclick="window.location.href='overview.html'">Overview</button>
     <button class="nav-btn" onclick="signOut()">Sign out</button>
   </div>
 </nav>
@@ -129,6 +130,14 @@ function loadSeritiSession(){
 const user = loadSeritiSession();
 if(!user){ sessionStorage.setItem('seriti_return_to','manager.html'); window.location.href='login.html'; }
 document.getElementById('navName').textContent = user.name;
+/* Show the Overview button only to leadership, HR and the admin. The server
+   enforces this too, so this only decides who sees the button. */
+(function(){
+  var ok=['alwyn@seriti.org.za','nobuhle@seriti.org.za','refiloe@seriti.org.za'];
+  var b=document.getElementById('overviewBtn');
+  if(b && user && user.email && ok.indexOf(String(user.email).toLowerCase().trim())>-1) b.style.display='';
+})();
+
 
 let allApps = [];
 let currentFilter = 'all';
