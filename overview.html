@@ -67,6 +67,16 @@ h1,h2,h3{font-family:'Outfit',sans-serif; font-weight:700; letter-spacing:-0.01e
 .hrow .h-bar{height:14px; background:var(--brand-light); border-radius:0 4px 4px 0; min-width:2px;}
 .hrow:hover .h-bar{background:var(--brand-deep);}
 .hrow .h-val{font-weight:600; text-align:right;}
+.stackrow{display:grid; grid-template-columns:minmax(90px,170px) 1fr 56px; gap:10px; align-items:center; margin-bottom:8px; font-size:13px;}
+.stackrow .h-name{color:var(--slate); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.stackrow .h-val{font-weight:600; text-align:right;}
+.stack{display:flex; height:20px; border-radius:0 4px 4px 0; overflow:hidden; background:transparent;}
+.seg{display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; min-width:3px; overflow:hidden; border-right:1px solid rgba(255,255,255,.55);}
+.seg:last-child{border-right:0;}
+.stackrow:hover .seg{filter:brightness(.88);}
+.legend{display:flex; flex-wrap:wrap; gap:6px 14px; margin:2px 0 12px; font-size:12px; color:var(--slate-soft);}
+.legend .lg{display:inline-flex; align-items:center; gap:6px;}
+.legend .sw{width:11px; height:11px; border-radius:3px; display:inline-block;}
 
 /* two-series compare */
 .cmp{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
@@ -93,6 +103,7 @@ details.tv summary{cursor:pointer; color:var(--brand); font-weight:600;}
 @media (max-width:820px){
   .grid{grid-template-columns:1fr;}
   .hrow{grid-template-columns:minmax(80px,120px) 1fr 48px;}
+  .stackrow{grid-template-columns:minmax(80px,120px) 1fr 48px;}
   .cmp{grid-template-columns:1fr;}
 }
 </style>
@@ -130,7 +141,7 @@ details.tv summary{cursor:pointer; color:var(--brand); font-weight:600;}
       <div class="card"><h2>Leave days by department</h2><div class="sub">Working days, for the filters above</div><div id="chDept"></div></div>
       <div class="card"><h2>Which weekday leave starts on</h2><div class="sub">Number of applications, by the weekday the leave begins</div><div id="chDow"></div></div>
       <div class="card"><h2>Regular employees and interns</h2><div class="sub">Same period, department and leave type, status as chosen</div><div id="chCmp"></div></div>
-      <div class="card"><h2>Most leave taken</h2><div class="sub">Top 10 people, working days, for the filters above</div><div id="chTop"></div></div>
+      <div class="card"><h2>Most leave taken</h2><div class="sub">Top 10 people, working days, split by type of leave, for the filters above</div><div id="chTopLegend" class="legend"></div><div id="chTop"></div></div>
       <div class="card"><h2>Waiting for a decision</h2><div class="sub">Pending applications, longest waiting first</div><div id="tPending"></div></div>
       <div class="card wide"><h2>On leave now and in the next 14 days</h2><div class="sub">Approved leave only. Not affected by the period filter</div><div id="tOnLeave"></div></div>
     </div>
@@ -273,15 +284,12 @@ function renderKpis(base, set){
   const pending  = base.filter(a=>a.status==='Pending');
   const days = approved.reduce((t,a)=>t+(+a.workingDays||0),0);
   const avg  = approved.length ? days/approved.length : 0;
-  const waits = base.filter(a=>(a.status==='Approved'||a.status==='Declined') && a._ts && a._dec && a._dec>=a._ts).map(a=>(a._dec-a._ts)/DAY_MS);
-  const med = median(waits);
   const onNow = APPS.filter(a=>a.status==='Approved' && a._start && a._end && a._start<=today && a._end>=today && (!document.getElementById('fDept').value || a.department===document.getElementById('fDept').value) && (!document.getElementById('fType').value || a.employmentType===document.getElementById('fType').value)).length;
   const tiles = [
     ['Applications', base.length, 'all statuses'],
     ['Approved days', num(days), approved.length+' approved applications'],
     ['Waiting for a decision', pending.length, 'pending now'],
     ['Average length', num(avg), 'working days per approved application'],
-    ['Typical time to decide', med==null?'-':(med<1? '< 1 day' : (num(med)==='1' ? '1 day' : num(med)+' days')), 'median, approved or declined'],
     ['On leave today', onNow, 'approved leave covering today']
   ];
   document.getElementById('kpis').innerHTML = tiles.map(t=>`<div class="kpi"><div class="k-label">${escH(t[0])}</div><div class="k-val">${escH(t[1])}</div><div class="k-sub">${escH(t[2])}</div></div>`).join('');
@@ -341,9 +349,33 @@ function renderCompare(set){
   document.getElementById('chCmp').innerHTML = `<div class="cmp">${row({key:'Regular',text:'Regular employees'},'var(--series-1)',reg)}${row({key:'Intern',text:'Interns'},'var(--series-2)',int)}</div>`;
 }
 
+const TYPE_COLORS = {'Annual':'#17874F','Sick':'#C4501A','Family Responsibility':'#2A6FC9','Study':'#7B4BB5','Overtime':'#8A6D0B'};
+const TYPE_ORDER = ['Annual','Sick','Family Responsibility','Study','Overtime'];
+function typeColor(t){ return TYPE_COLORS[t] || '#5C6670'; }
 function renderTop(set){
-  const top = groupSum(set, a=>a.name||'Unknown').slice(0,10);
-  renderHBars('chTop', top, ' days');
+  const el = document.getElementById('chTop'), lg = document.getElementById('chTopLegend');
+  const byPerson = {};
+  set.forEach(a=>{
+    const n = a.name || 'Unknown', t = a.leaveType || 'Other', d = +a.workingDays || 0;
+    (byPerson[n] = byPerson[n] || {total:0, types:{}});
+    byPerson[n].total += d; byPerson[n].types[t] = (byPerson[n].types[t]||0) + d;
+  });
+  const top = Object.entries(byPerson).sort((x,y)=>y[1].total-x[1].total).slice(0,10);
+  if(!top.length){ el.innerHTML='<div class="empty">Nothing to show for these filters.</div>'; lg.innerHTML=''; return; }
+  const max = Math.max(1, ...top.map(e=>e[1].total));
+  const used = new Set(); top.forEach(e=>Object.keys(e[1].types).forEach(t=>used.add(t)));
+  const order = t => { const i = TYPE_ORDER.indexOf(t); return i<0 ? 99 : i; };
+  const usedList = [...used].sort((a,b)=>order(a)-order(b) || a.localeCompare(b));
+  lg.innerHTML = usedList.map(t=>`<span class="lg"><span class="sw" style="background:${typeColor(t)}"></span>${escH(t)}</span>`).join('');
+  el.innerHTML = top.map(([name,info])=>{
+    const parts = Object.entries(info.types).filter(p=>p[1]>0).sort((a,b)=>order(a[0])-order(b[0]) || a[0].localeCompare(b[0]));
+    const summary = parts.map(p=>p[0]+' '+num(p[1])).join(', ');
+    const segs = parts.map(([t,d])=>{
+      const w = d/max*100;
+      return `<div class="seg" style="width:${w.toFixed(2)}%; background:${typeColor(t)}" data-tip="${escH(name)}: ${escH(t)} ${num(d)} day${d===1?'':'s'}">${w>=7 ? num(d) : ''}</div>`;
+    }).join('');
+    return `<div class="stackrow" data-tip="${escH(name)}: ${num(info.total)} days (${escH(summary)})"><span class="h-name" title="${escH(name)}">${escH(name)}</span><div class="stack">${segs}</div><span class="h-val">${num(info.total)}</span></div>`;
+  }).join('');
 }
 
 function renderPending(list){

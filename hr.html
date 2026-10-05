@@ -117,7 +117,10 @@ tr:nth-child(even) td{background:#FAFCFA;}
   </div>
 
   <!-- STAFF LEAVE BALANCES -->
-  <h2 class="section-head">Staff leave balances</h2>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+    <h2 class="section-head" style="margin:0;">Staff leave balances</h2>
+    <button class="export-btn" onclick="exportBalancesCSV()">Export balances CSV</button>
+  </div>
   <div class="bal-table-wrap">
     <div id="balContainer"><div class="loading">Loading staff balances…</div></div>
   </div>
@@ -330,6 +333,25 @@ function exportCSV(){
   const a=document.createElement('a');
   const tag = type==='Intern' ? 'Interns_' : type==='Regular' ? 'Regular_' : '';
   a.href=url; a.download=`Seriti_Leave_Applications_${tag}${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+/* ── Export staff leave balances to CSV (everyone; filter by Employment Type in Excel) ── */
+function exportBalancesCSV(){
+  if(!allStaff.length) return alert('No staff balances to export.');
+  const q=v=>`"${(v==null?'':v).toString().replace(/"/g,'""')}"`;
+  const n=v=>(v==null||v==='')?'':String(v);
+  const headers=['Name','Employment Type','Department','Start Date','Annual Remaining','Annual Total','Sick Remaining','Sick Total','Family Remaining','Family Total','Study Remaining','Study Total'];
+  const rows=allStaff.map(s=>[
+    q(s.name),q(s.employmentType||'Regular'),q(s.department),q(s.startDate?String(s.startDate).slice(0,10):''),
+    n(s.annualRemaining),n(s.annualTotal),n(s.sickRemaining),n(s.sickTotal),
+    n(s.familyRemaining),'5',n(s.studyRemaining),'10'
+  ].join(','));
+  const csv='\uFEFF'+[headers.join(','),...rows].join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`Seriti_Leave_Balances_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
 
