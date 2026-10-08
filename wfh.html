@@ -281,7 +281,7 @@ function renderApply(){
   const ex = existingFor(w.weekStart);
   const when = dow(w.today)===5 ? 'coming week' : 'this week';
   if(ex){
-    el.innerHTML = '<div class="card"><h2>Your request for the ' + when + '</h2><div class="notice ok">You already have a ' + escH(ex.status.toLowerCase()) + ' request for the week of ' + escH(weekLabel(w.weekStart)) + ': ' + escH(ex.days.map(k=>DAYLONG[k]).join(' and ')) + '.</div><div class="sub" style="margin-top:10px;">If you want to change your days, cancel it below and send a new one.</div></div>';
+    el.innerHTML = '<div class="card"><h2>Your request for the ' + when + '</h2><div id="applyMsg"></div><div class="notice ok">You already have a ' + escH(ex.status.toLowerCase()) + ' request for the week of ' + escH(weekLabel(w.weekStart)) + ': ' + escH(ex.days.map(k=>DAYLONG[k]).join(' and ')) + '.</div><div class="sub" style="margin-top:10px;">If you want to change your days, cancel it below and send a new one.</div></div>';
     return;
   }
   el.innerHTML = '<div class="card"><h2>Apply for the ' + when + '</h2>' +
