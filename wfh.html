@@ -337,7 +337,13 @@ async function submitApply(){
     const res = await fetch(SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(payload) });
     const out = await res.json().catch(()=>null);
     if(out && out.success===true){
-      await refresh(); setMsg('ok','Request submitted. Your manager has been told and you will get a confirmation email.');
+      /* Show the result straight away from what we just sent, then confirm with the server in the background. */
+      const okText = 'Request submitted. Your manager has been told and you will get a confirmation email.';
+      try{
+        DATA.mine.unshift({ wfhId: out.wfhId || ('NEW-' + Date.now()), timestamp: new Date().toISOString(), name: DATA.me.name, email: user.email, department: DATA.me.department, managerEmail:'', weekStart: ws, days: days, status:'Pending', managerNote:'', decidedAt:'' });
+        renderAll(); setMsg('ok', okText);
+      }catch(e2){ await refresh(); setMsg('ok', okText); }
+      refresh().then(()=>{ const m=$('applyMsg'); if(m && !m.textContent.trim()) setMsg('ok', okText); });
     } else if(out && out.success===false){
       setMsg('err', out.message || 'Your request could not be submitted. Please try again.'); btn.disabled=false; btn.textContent='Submit request';
     } else { await confirmOrWarn(ws); }
