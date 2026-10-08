@@ -138,6 +138,7 @@ const user = loadSeritiSession();
 if(!user){ sessionStorage.setItem('seriti_return_to','wfh.html' + (window.location.hash || '')); window.location.href='login.html'; }
 
 function signOut(){
+  try{ localStorage.removeItem('seriti_wfh_' + (user && user.email ? user.email : '')); }catch(e){}
   try{ localStorage.removeItem('seriti_dash_' + (user && user.email ? user.email : '')); }catch(e){}
   sessionStorage.removeItem('seriti_user');
   localStorage.removeItem('seriti_user');
@@ -183,12 +184,35 @@ async function fetchData(){
   }
   throw last;
 }
+/* A copy of the last page is kept on this device (for today only) so the page can
+   open straight away while the fresh information is fetched. It is removed on sign-out. */
+function wfhCacheKey(){ return 'seriti_wfh_' + (user && user.email ? user.email : ''); }
+function wfhDayStamp(){ const d = new Date(); return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate(); }
+function readWfhCache(){
+  try{
+    const c = JSON.parse(localStorage.getItem(wfhCacheKey()) || 'null');
+    if(c && c.data && c.day === wfhDayStamp()) return c.data;
+  }catch(e){}
+  return null;
+}
+function writeWfhCache(data){
+  try{ localStorage.setItem(wfhCacheKey(), JSON.stringify({ savedAt: Date.now(), day: wfhDayStamp(), data })); }catch(e){}
+}
+function clearWfhCache(){ try{ localStorage.removeItem(wfhCacheKey()); }catch(e){} }
+function userIsTyping(){
+  return !!document.querySelector('#panel-apply input:checked, #panel-team textarea:not(:placeholder-shown)');
+}
+let SHOWED_CACHE = false;
 async function refresh(){
   try{
     const data = await fetchData();
-    if(data.error){ $('loadMsg').style.display=''; $('loadMsg').innerHTML = '<div class="notice err">' + escH(data.error) + ' Please sign in again.</div>'; return false; }
-    DATA = data; $('loadMsg').style.display='none'; renderAll(); return true;
+    if(data.error){ clearWfhCache(); SHOWED_CACHE = false; $('loadMsg').style.display=''; $('loadMsg').innerHTML = '<div class="notice err">' + escH(data.error) + ' Please sign in again.</div>'; return false; }
+    DATA = data; writeWfhCache(data); $('loadMsg').style.display='none';
+    if(!(SHOWED_CACHE && userIsTyping())) renderAll();
+    SHOWED_CACHE = false;
+    return true;
   }catch(e){
+    if(SHOWED_CACHE){ SHOWED_CACHE = false; return false; } /* keep showing the saved page */
     $('loadMsg').style.display='';
     $('loadMsg').innerHTML = '<div class="notice err">Could not load the page. <a href="#" onclick="initialLoad();return false;">Try again</a><br><small>Reason: ' + escH(e && e.message ? e.message : e) + '</small></div>';
     return false;
@@ -387,7 +411,14 @@ async function decide(id, status, btn){
   box.forEach(b=>b.disabled=false);
 }
 
-async function initialLoad(){ $('loadMsg').style.display=''; $('loadMsg').textContent='Loading...'; await refresh(); }
+async function initialLoad(){
+  const cached = readWfhCache();
+  if(cached && !DATA){
+    try{ DATA = cached; $('loadMsg').style.display='none'; renderAll(); SHOWED_CACHE = true; }
+    catch(e){ DATA = null; SHOWED_CACHE = false; $('loadMsg').style.display=''; $('loadMsg').textContent='Loading...'; }
+  } else { $('loadMsg').style.display=''; $('loadMsg').textContent='Loading...'; }
+  await refresh();
+}
 if(user) initialLoad();
 </script>
 </body>
