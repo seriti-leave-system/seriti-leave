@@ -298,12 +298,12 @@ function renderApply(){
     return;
   }
   if(!w.open){
-    el.innerHTML = '<div class="card"><h2>Applications are closed</h2><div class="sub">Applications are open on Fridays and Mondays only.</div>' +
+    el.innerHTML = '<div class="card"><h2>Applications are closed</h2><div class="sub">Applications are open from Friday to Monday.</div>' +
       '<div class="notice" style="margin-top:12px;">The next window opens on <strong>' + escH(longDate(w.nextOpen)) + '</strong>, for the week of ' + escH(weekLabel(w.nextOpenWeekStart)) + '.</div></div>';
     return;
   }
   const ex = existingFor(w.weekStart);
-  const when = dow(w.today)===5 ? 'coming week' : 'this week';
+  const when = dow(w.today)===1 ? 'this week' : 'coming week';
   if(ex){
     el.innerHTML = '<div class="card"><h2>Your request for the ' + when + '</h2><div id="applyMsg"></div><div class="notice ok">You already have a ' + escH(ex.status.toLowerCase()) + ' request for the week of ' + escH(weekLabel(w.weekStart)) + ': ' + escH(ex.days.map(k=>DAYLONG[k]).join(' and ')) + '.</div><div class="sub" style="margin-top:10px;">If you want to change your days, cancel it below and send a new one.</div></div>';
     return;
