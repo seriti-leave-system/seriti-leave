@@ -127,6 +127,7 @@ tr:nth-child(even) td{background:#FAFCFA;}
 
 .msg{margin-top:12px; padding:10px 14px; border-radius:8px; font-size:13px; display:none;}
 .msg.ok{display:block; background:var(--green-pale); color:var(--green); border:1px solid rgba(30,132,73,0.25);}
+.msg.wait{display:block; background:var(--bg,#F6F9F7); color:var(--muted,#5C6B63); border:1px solid rgba(0,0,0,0.12);}
 .msg.err{display:block; background:var(--red-pale); color:var(--red); border:1px solid rgba(192,57,43,0.25);}
 
 .loading{text-align:center; padding:40px; color:var(--slate-soft); font-size:14px;}
@@ -303,7 +304,7 @@ document.getElementById('welcomeText').textContent = `Welcome back, ${user.name.
 /* ── Policy rules from Seriti HR policy ── */
 const POLICY_ALERTS = {
   'Annual': 'Annual leave: 15 days per year. Requires 1 week notice for less than 5 days, 3 weeks notice for 5 or more consecutive days.',
-  'Sick': 'Sick leave: A doctor\'s certificate is required for absence on a Monday or Friday, the day before or after a public holiday, or more than 2 consecutive days.',
+  'Sick': 'Sick leave: A doctor\'s certificate is required for absence on a Monday or Friday, the day before or after a public holiday, or 2 or more consecutive days.',
   'Family Responsibility': 'Family responsibility leave: 5 days per year. Proof of the event (death certificate, sick note, etc.) must be submitted with your application.',
   'Maternity': 'Maternity leave: Please notify HR at least 8 weeks before your start date. A medical note confirming the expected date of birth is required.',
   'Paternity': 'Paternity leave: 5 days paid, 5 days unpaid. Must be applied for at least 1 month in advance. Must be taken within 60 days of the child\'s birth.',
@@ -874,6 +875,7 @@ async function submitLeave(){
 
   const btn=document.getElementById('submitLeaveBtn');
   btn.disabled=true; btn.textContent = editingAppId ? 'Saving…' : 'Submitting…';
+  showMsg('wait', editingAppId ? 'Saving your changes. This can take a few seconds. Please do not press the button again.' : 'Saving your application. This can take a few seconds while the emails are sent. Please do not press the button again.');
 
   if(editingAppId){
     const editPayload = {
@@ -932,7 +934,7 @@ async function submitLeave(){
     // when it had actually gone through fine.
     if(data && data.success === true){
       showMsg('ok','Application submitted. Your manager will be notified by email.');
-      setTimeout(()=>{ closeModal(); loadDashboard(); },1800);
+      setTimeout(()=>{ closeModal(); loadDashboard(); },1100);
       return;
     }
 
@@ -948,7 +950,8 @@ async function submitLeave(){
         showMsg('ok','Application submitted. Your manager will be notified by email.');
         setTimeout(()=>{ closeModal(); loadDashboard(); },1800);
       } else {
-        showMsg('err','Something went wrong saving your application. Please try again.');
+        const why = (data && data.error) ? String(data.error).slice(0,200) : '';
+        showMsg('err','Something went wrong saving your application. Please try again.' + (why ? ' The system said: ' + why + ' If this keeps happening, please send this message to Fifi.' : ' If this keeps happening, please tell Fifi what time you tried.'));
       }
     }catch(verifyErr){
       // The check itself failed -- we genuinely don't know if the
