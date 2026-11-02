@@ -281,6 +281,8 @@ function renderWho(){
     '<button class="tab' + (WHO_WEEK===1?' active':'') + '" onclick="WHO_WEEK=1;renderWho()">Next week: ' + escH(weeks[1].label) + '</button></div>';
   html += '<div class="cols">' + DAYKEYS.map(k=>{
     const list = w.days[k] || [];
+    const isHol = (w.holidays||[]).indexOf(k) !== -1;
+    if(isHol) return '<div class="col"><h3>' + DAYLONG[k] + '<span>' + escH(shortDate(addDays(w.weekStart, DAYOFF[k]))) + '</span></h3><div class="none">Closed. Work from home is not available on this day.</div></div>';
     return '<div class="col"><h3>' + DAYLONG[k] + '<span>' + escH(shortDate(addDays(w.weekStart, DAYOFF[k]))) + '</span></h3>' +
       (list.length ? '<ul>' + list.map(p=>'<li>' + escH(p.name) + '<small>' + escH(p.department) + '</small></li>').join('') + '</ul>'
                    : '<div class="none">Nobody has told us they are working from home.</div>') + '</div>';
@@ -310,17 +312,19 @@ function renderApply(){
   }
   el.innerHTML = '<div class="card"><h2>Apply for the ' + when + '</h2>' +
     '<div class="sub">Week of <strong>' + escH(weekLabel(w.weekStart)) + '</strong>. Choose one or two days. Monday and Friday are office days. Your line manager will approve it.</div>' +
-    '<div class="daypick" id="daypick">' + DAYKEYS.map(k=>'<label class="dayopt" id="opt-' + k + '"><input type="checkbox" value="' + k + '" onchange="onPick()"><span>' + DAYLONG[k] + '<small>' + escH(shortDate(addDays(w.weekStart,DAYOFF[k]))) + '</small></span></label>').join('') + '</div>' +
+    '<div class="daypick" id="daypick">' + DAYKEYS.map(k=>'<label class="dayopt' + (HOLK(w.weekStart).indexOf(k)!==-1 ? ' off' : '') + '" id="opt-' + k + '"><input type="checkbox" value="' + k + '" onchange="onPick()"' + (HOLK(w.weekStart).indexOf(k)!==-1 ? ' disabled' : '') + '><span>' + DAYLONG[k] + '<small>' + (HOLK(w.weekStart).indexOf(k)!==-1 ? 'Closed' : escH(shortDate(addDays(w.weekStart,DAYOFF[k])))) + '</small></span></label>').join('') + '</div>' +
     '<div id="applyMsg"></div>' +
     '<button class="btn" id="submitBtn" onclick="submitApply()" disabled>Submit request</button></div>';
 }
+function HOLK(ws){ const wk=((DATA&&DATA.weeks)||[]).filter(x=>x.weekStart===ws)[0]; return (wk&&wk.holidays)||[]; }
 function picked(){ return Array.from(document.querySelectorAll('#daypick input:checked')).map(i=>i.value); }
 function onPick(){
   const p = picked();
   DAYKEYS.forEach(k=>{
     const inp = document.querySelector('#opt-' + k + ' input');
     $('opt-'+k).classList.toggle('on', inp.checked);
-    const block = !inp.checked && p.length>=2;
+    const isHol = HOLK(DATA.window.weekStart).indexOf(k)!==-1;
+    const block = isHol || (!inp.checked && p.length>=2);
     inp.disabled = block; $('opt-'+k).classList.toggle('off', block);
   });
   $('submitBtn').disabled = !(p.length>=1 && p.length<=2);
